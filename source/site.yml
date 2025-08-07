@@ -1,7 +1,7 @@
 site:
   title: 刘旭
-  description: 跟着旭哥学Python.
-  keywords: 刘旭 liuxu python docker
+  description: 刘旭的个人博客笔记.
+  keywords: 刘旭 liuxu python linux docker k8s kaxonliu 
   theme: default
   language: zh-CN
   # set the /<rootPath> pathname under which your site is served
@@ -10,7 +10,7 @@ site:
   # set cdn path:
   cdn-path: https://cdn.jsdelivr.net/npm
   navigation:
-    - title: Docker教程
+    - title: Docker
       uri: /books/docker/index.html
     - title: 外出看看
       uri: /blogs/travel/index.html
@@ -32,9 +32,9 @@ site:
   integration:
   footer: |
           <div>
-            Powered by GitSite. &copy;<a href="/">刘旭Python</a> 
+            Powered by GitSite. &copy;<a href="/">刘旭kaxonliu</a> 
             - <a href="https://space.bilibili.com/433467371" target="_blank">B站</a>
-            - <a href="https://github.com/liuxupython" target="_blank">GitHub</a>
+            - <a href="https://github.com/kaxonliu" target="_blank">GitHub</a>
           </div>
 
 
