@@ -10,6 +10,8 @@ site:
   # set cdn path:
   cdn-path: https://cdn.jsdelivr.net/npm
   navigation:
+    - title: Linux
+      uri: /books/linux/index.html
     - title: Docker
       uri: /books/docker/index.html
     - title: 外出看看
