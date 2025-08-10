@@ -430,6 +430,18 @@ L.root-servers.net198.32.64.12美国
 M.root-servers.net202.12.27.33日本（另支持IPv6）
 ```
 
+DNS的解析过程有两个，分别是递归和迭代。具体的解析可以使用命令 `dig` 查看。比如查看域名`kaxonliu.github.io` 的解析过程。
+
+~~~bash
+dig +trace kaxon.github.io
+~~~
+
+>在centos上安装工具包后才可以使用命令 dig
+>
+>~~~bash
+>yum install -y bind-utils
+>~~~
+
 
 
 
