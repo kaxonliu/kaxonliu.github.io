@@ -290,7 +290,7 @@ chmod +x /root/my_shell_file
 - 重启：10分钟后重启`shutdown -r 10`，立即重启：`shutdown -r now`，`reboot`
 - 关机：10分钟后重启`shutdown -h 10`，立即重启：`shutdown -h now`
 - 取消将要执行的关机或重启任务：`shutdown -c`
-
+- 查看系统信息：`cat /etc/redhat-release` 或者 `uname -a` 、`uname -r` 、`uname -m` 
 
 
 
