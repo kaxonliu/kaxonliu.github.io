@@ -108,3 +108,119 @@ Linux 根目录（`/`）下的每个文件夹都有特定的用途，遵循 **Fi
 >- **历史目录**：`/srv` 和 `/opt` 常用于规范第三方服务的数据存储。
 
 
+
+
+
+## 文件管理基础命令
+
+**新建文件**
+
+~~~bash
+touch abc.txt						# 新建一个文件
+touch abc{1..3}.txt			# 新建后缀连续的三个文件
+touch abc{4,6,10}.txt		# 新建后缀不同的三个文件
+~~~
+
+**新建文件夹**
+
+~~~bash
+mkdir aaa								# 新建文件夹 aaa
+mkdir me{1..3}					# 新建文件夹 me1 me2 me3
+mkdir me{4,7,9}					# 新建文件夹 me4 me7 me9
+
+mkdir -p /tmp/xxx/yyy   # 递归创建文件夹 /tmp/xxx 和 /tmp/xxx/yyy			
+~~~
+
+**复制文件和文件夹**
+
+~~~bash
+cp <src> <dst>					# 把原目标复制到目标位置
+
+cp abc.txt	/tmp/				# 把当前文件夹下的abc.txt 复制到/tmp/文件夹下，文件名依然为 abc.txt
+cp abc.txt  /tmp/1.txt	# 把当前文件夹下的abc.txt 复制到/tmp/文件夹下，文件名为 1.txt
+
+
+cp -r xxx/ /tmp/				# 把当前文件夹递归着复制到 /tmp/文件夹下，文件夹名字依然为 xxx
+~~~
+
+**移动文件或文件夹**
+
+~~~bash
+mv abc.txt /tmp/				# 把当前文件夹下的abc.txt文件复制到 /tmp文件夹下，文件名依然为 abc.txt
+mv abc.txt abcc.txt			# 把abc.txt 重命名为abcc.txt
+mv xxx xxyy							# 把文件夹xxx 重命名为 xxyy
+~~~
+
+**删除文件或文件夹**
+
+~~~bash
+rm abc.txt							# 删除abc.txt
+rm *.txt								# 批量删除以 .txt结尾的文件
+rm -f abc.txt						# 强制删除文件
+rm -rf xxx							# 强制并递归删除文件夹
+~~~
+
+**查看文件或文件夹的元数据**
+
+~~~bash
+ls -l 1.txt							# 展示文件1.txt的信息
+ls -l /tmp							# 展示/tmp里面所有文件的信息
+ls -l -d /tmp						# 展示/tmp这个文件夹自己的信息
+ls -a -l ~							# 展示家目录下的所有文件，包括隐藏文件
+~~~
+
+
+
+## 文件的元数据
+
+命令 `ls -l` 展示文件的元数据。
+
+~~~bash
+[root@node1 ~]# ls -l /boot/ | head -5
+total 98156
+-rw-r--r--  1 root root   153661 Jun  4  2024 config-3.10.0-1160.119.1.el7.x86_64
+drwxr-xr-x. 3 root root     4096 Mar  7  2019 efi
+drwxr-xr-x. 2 root root     4096 Mar  7  2019 grub
+drwx------. 5 root root     4096 Jul  8  2024 grub2
+~~~
+
+其中展示的信息表示的含义很重要。
+
+
+
+## 文件的3个时间
+
+使用命令 `stat` 可以查看文件的3个时间和其他信息
+
+~~~bash
+[root@node1 ~]# stat abx.txt 
+  File: ‘abx.txt’
+  Size: 0               Blocks: 0          IO Block: 4096   regular empty file
+Device: fd01h/64769d    Inode: 394296      Links: 1
+Access: (0644/-rw-r--r--)  Uid: (    0/    root)   Gid: (    0/    root)
+Access: 2025-08-11 22:05:39.148952510 +0800
+Modify: 2025-08-11 21:45:30.750088368 +0800
+Change: 2025-08-11 21:45:30.750088368 +0800
+ Birth: -
+~~~
+
+其中，
+
+- `atime` ，access time，表示文件内容最近一次被查看的时间
+- `mtime`，modify time，表示文件内容最近一次发生变化的时间
+- `ctime`，change time，表示文件内容或者文件元数据（文件名，大小，权限等）最近一次发生变化的时间
+
+
+
+
+
+## 查看文本文件的内容
+
+使用的命令常用的有：
+- 查看文件全部内容，`cat abc.txt`
+- 翻页查看文件内容，`less abc.txt`
+- 查看文件前10行，`head -10 abc.txt`
+- 查看文件后10行，`tail -10 abc.txt`
+- 动态查看文件尾部追加的内容，`tail -f db.log`
+- 使用文本编辑工具编辑文件，`vi abc.txt`
+
