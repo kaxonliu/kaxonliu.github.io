@@ -234,3 +234,142 @@ cut [选项] [文件]
 
 
 
+## split拆分文件
+
+`split` 用于将大文件分割成多个小文件。这在处理大型日志文件、数据库备份或需要分块传输文件时特别有用。
+
+### 基本语法
+
+#### 命令格式
+
+```bash
+split [选项] 输入文件 [输出文件前缀]
+```
+
+### 常用选项
+
+| 选项 | 描述                            |
+| :--- | :------------------------------ |
+| `-b` | 按字节大小分割，可加单位(K,M,G) |
+| `-l` | 按行数分割                      |
+| `-n` | 分割成指定数量的文件            |
+| `-d` | 使用数字后缀而不是字母          |
+
+### 使用示例
+
+| 命令                                         | 说明                                    |
+| :------------------------------------------- | :-------------------------------------- |
+| `split -b 100M largefile.dat`                | 大文件按100M拆分                        |
+| `split -b 100M largefile.dat split_file_`    | 文件按100M拆分，并指定小文件前缀        |
+| `split -b 100M -d largefile.dat split_file_` | 按100MB分割文件并使用数字后缀(00,01...) |
+| `split -l 10000 access.log split_access_`    | 按每10000行分割文件                     |
+| `split -n 5 data.csv split_data_`            | 将文件分割成5个大小相等的部分           |
+
+
+
+### 合并文件
+
+~~~bash
+cat split_file_* > largefile.new.dat
+~~~
+
+### 验证文件
+
+使用 `md5sum` 验证拆分前后的两个文件的 md5 值是否相同。相同则表明拆分合并的过程没有问题。
+
+~~~bash
+lz@mac aaa % md5sum D89A4953.jpg 
+b2914739420c855ba7065bb51c1b6c5b  D89A4953.jpg
+lz@mac aaa % md5sum D89.jpg     
+b2914739420c855ba7065bb51c1b6c5b  D89.jpg
+lz@mac aaa % 
+~~~
+
+
+
+
+
+## 打包压缩
+
+打包指的是把多个文件放在一个文件中，压缩指的是把文件压缩得到一个体积更小的压缩文件。
+
+### 打包
+
+使用 `tar` 命令可以把多个文件打包成一个文件。如：把 split_打头的文件打包到一个名为 aaa.tar 的文件中。其中：`-c` 表示创建新的归档文件，`-v`显示详细过程，`-f`指定归档文件名（必须放在最后）。
+
+~~~bash
+tar -cvf  aaa.tar split_*
+~~~
+
+#### 拆包
+
+把打包文件拆分成原始文件。其中，`-x`表示从归档文件中提取文件。
+
+~~~bash
+tar -xvf a.tar 
+~~~
+
+
+
+### 压缩
+
+把 tar 包压缩成压缩包。如：使用 `gzip` 压缩 `a.tar`，得到压缩包 `a.tar.gz`
+
+~~~bash
+gzip a.tar
+~~~
+
+
+
+直接使用 `tar` 命令打包压缩一块完成。
+
+- 比如使用 `gzip` 压缩算法压缩文件：
+
+~~~bash
+tar -cvzf a.tar.gz split_*
+~~~
+
+- 比如使用 `bzip2` 压缩算法压缩文件：
+
+~~~bash
+tar -cvjf b.tar.bz2 split_*
+~~~
+
+>补充，如果没有 bzip2命令，则安装bzip2 `yum install -y bzip2`
+
+
+
+### 解压缩
+
+使用 `tar` 命令解压缩。如：把`a.tar.gz`解压缩当前文件夹。其中，`-x`表示解压缩
+
+~~~bash
+rm -f split_*
+tar -xvf a.tar.gz 
+~~~
+
+
+
+### zip 和 unzip
+
+zip格式的压缩包是在windows上linux上通用的格式的压缩文件。 如果没有这两个命令，要安装：`yum install -y zip unzip`
+
+**压缩 zip** 
+
+~~~bash
+zip -q a.zip split_*			       # 参数 -q 表示不输出提示信息（静默）
+zip -r b.zip /bbb					   # 参数 -r 表示压缩文件夹时递归
+~~~
+
+
+
+**解压缩 unzip**
+
+~~~bash
+unzip b.zip -d /bbb2		           # 参数 -d 指定解压目录
+~~~
+
+
+
+
+
