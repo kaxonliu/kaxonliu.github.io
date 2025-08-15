@@ -69,7 +69,6 @@ root@node1 c]# ls -l abc.txt
 ### 设置文件权限
 
 **使用加减号**
-
 ~~~bash
 # 给属主增加写和执行权限
 # 给属组增加执行权限
@@ -83,7 +82,6 @@ chmod u-wx,g-x,o-r abc.txt
 ~~~
 
 **直接赋权**
-
 ~~~bash
 # 属主有读写和执行权限
 # 属组有读和执行权限
@@ -99,7 +97,6 @@ chmod a=- abc.txt		#等价于 chmod a=--- abc.txt
 ~~~
 
 **使用数字**
-
 ~~~bash
 chmod 777 abc.txt
 # 表示 u 有 r w x 的权限（r+w+x==4+2+1 == 7）
@@ -130,14 +127,12 @@ chown -R 777 data/		# -R 表示递归设置所有子文件和子文件夹
 ### suid
 
 设置在 二进制命令 上的权限。好处就是任何用户使用这个命令时表现的有效属主是这个命令的属主。实现的效果是在不改变文件权限的条件下，允许其他人使用这个命令的功能。具备这个权限的命令有：`passwd`、`su` 等。
-
 ~~~bash
 [root@node1 ~]# ls -l `which passwd`
 -rwsr-xr-x 1 root root 27856 Apr  1  2020 /bin/passwd
 ~~~
 
 可以看到 `passwd` 的属主的权限为 `rws` ，其中的 `s` 就是这个权限的表达形式。如果想把一个命令设置为这个权限，可以使用 `chmod u+s`。
-
 ~~~bash
 [root@node1 ~]# ls -l `which cat`
 -rwxr-xr-x 1 root root 54080 Nov 17  2020 /bin/cat
@@ -169,7 +164,36 @@ drwxr-sr-x 2 root root 4096 Aug 15 14:44 /aaa
 
 
 
- 
+###  sticky
+
+在 Linux 中，**Sticky Bit（粘滞位）** 是一种特殊的文件权限设置，主要用于**目录**，其核心作用是**限制用户只能删除或重命名自己拥有的文件**，即使该目录对所有用户开放写权限（`rwx`）。
+
+当目录设置了 Sticky Bit 后，其权限标志会显示为 `t` 或 `T`（取决于是否同时有执行权限 `x`）：
+- `rwxrwxrwt`（有执行权限 `x`，小写 `t`）
+- `rwxrwxrwT`（无执行权限 `x`，大写 `T`）
+
+~~~bash
+[root@node1 ~]# mkdir /share
+[root@node1 ~]# chmod 777 /share/
+[root@node1 ~]# chmod o+t /share/
+[root@node1 ~]# ls -ld /share/
+drwxrwxrwt 2 root root 4096 Aug 15 15:51 /share/
+[root@node1 ~]# su - liuxu -c 'touch /share/1.txt'
+[root@node1 ~]# su - jack -c 'touch /share/2.txt'
+[root@node1 ~]# ls -l /share/
+total 0
+-rw-rw-r-- 1 liuxu liuxu 0 Aug 15 15:51 1.txt
+-rw-rw-r-- 1 jack  jack  0 Aug 15 15:51 2.txt
+[root@node1 ~]# 
+[root@node1 ~]# su - liuxu -c 'rm -f /share/2.txt'
+rm: cannot remove ‘/share/2.txt’: Operation not permitted
+[root@node1 ~]# su - liuxu -c 'rm -f /share/1.txt'
+[root@node1 ~]# su - liuxu -c 'echo 111>> /share/2.txt'
+-bash: /share/2.txt: Permission denied
+[root@node1 ~]# 
+~~~
+
+
 
 
 
