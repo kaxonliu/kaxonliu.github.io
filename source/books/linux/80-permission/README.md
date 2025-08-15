@@ -205,7 +205,7 @@ rm: cannot remove ‘/share/2.txt’: Operation not permitted
 
 
 
-## su切换用户
+## su 切换用户
 
 `su`（Switch User）命令用于切换当前用户身份到另一个用户，通常用于切换到 `root` 用户或其他普通用户。
 
@@ -229,7 +229,7 @@ su [选项] [用户名]
 
 
 
-**登陆级别的shell**。比如：login、su - liuxu 。进入会按顺序加载一些文件
+**登陆级别的shell**。比如：login、`su - liuxu` 。进入会按顺序加载一些文件
 
 ~~~bash
 # 系统全局配置
@@ -245,5 +245,40 @@ su [选项] [用户名]
 
 
 
-**非登陆级别的shell**。比如：su liuxu。进入会按顺序加载一些文件
+**非登陆级别的shell**。比如：bash直接进入或su liuxu。进入会按顺序加载一些文件
+
+~~~bash
+~/.bashrc
+/etc/bashrc
+/etc/profile.d/*.sh
+~~~
+
+对于环境变量的永久添加，可以把下面的文本写在 `/etc/profile` 文件中。只要用户就会加载所有的环境变量。
+
+~~~bash
+PATH = $PATH:/your/now/path
+export PATH
+~~~
+
+> 补充，`export` 的效果是子shell中也可以有PATH
+
+
+
+## sudo 提权
+
+sudo 可以让普通用户临时获取某些管理员权限才能执行的命令。这些命令都是被提前配置好的，配置在文件 `/etc/sudoers` 中。有一个专门的命令 `visudo` 用来编辑该文件，并且可以使用 `visudo -c` 检查配置文件格式是否正确。
+
+~~~bash
+root   ALL=(ALL)     ALL
+liuxu  ALL=(ALL)     ALL							# liuxu使用可以在所有命令前面使用sudo 获取root权限
+jack   ALL=(ALL)     NOPASSWD:ALL     # sudo 时不用输入密码
+mack   ALL=(ALL)     /usr/bin/cat,/bin/touch	# mack使用sud只能提权2个命令	
+user01 ALL=(ALL)		ALL,!/usr/bin/vim					# !表示取反。这里表示提权所有命令但是除了vim
+
+%dev   ALL=(ALL)     ALL		# dev组的用户提权
+~~~
+
+>补充，sudo时配置 `NOPASSWD`时需要输入用户自己的密码。输入一次后就会被缓存，第二次使用时就不再需要输入密码。想要清理缓存使用命令 `sudo -k`
+
+
 
