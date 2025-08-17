@@ -259,8 +259,6 @@ gpgcheck=0
 
 
 
-
-
 ### yum命令的配置
 
 使用 `yum` 命令安装软件包有一些缓存机制，是否开启缓存，缓存在什么位置。这些都可以在文件 `/etc/yum.conf` 中做配置。其中，`cachedir` 指定缓存数据存放的目录；`keepcache` 配置是否开启缓存；`metadata_expire` 配置缓存过去时间，单位：`s秒 m分钟 h小时 d天`，默认单位是秒。
@@ -280,6 +278,32 @@ bugtracker_url=http://bugs.centos.org/set_project.php?project_id=23&ref=http://b
 distroverpkg=centos-release
 metadata_expire=90m
 ~~~
+
+
+
+## 使用阿里云yum仓库
+
+阿里云 repo 镜像配置页：**https://mirrors.aliyun.com/repo/**
+
+### 使用 x86-64架构的yum源
+
+~~~bash
+wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-7.repo
+wget -O /etc/yum.repos.d/epel.repo https://mirrors.aliyun.com/repo/epel-7.repo
+yum clean all
+yum makecache
+~~~
+
+### 使用 aarch64 架构的 yum 源
+
+~~~bash
+wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-altarch-7.repo
+wget -O /etc/yum.repos.d/epel.repo https://mirrors.aliyun.com/repo/epel-7.repo
+yum clean all
+yum makecache
+~~~
+
+
 
 
 
