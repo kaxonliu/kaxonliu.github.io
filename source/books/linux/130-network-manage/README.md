@@ -183,36 +183,70 @@ echo 1 > /proc/sys/net/ipv4/icmp_echo_ignore_all
 
 
 
-## network 服务
+## Centos7.9配置IP地址
 
-在 centos7.9 上网卡信息的配置需要编辑 `/etc/sysconfig/network-scripts/` 目录下的文件 `ifcfg-ens*`
+在centos7.9 上，想要永久的保存网卡的配置信息需要把配置数据写到配置文件中（配置文件是 `/etc/sysconfig/network-scripts/` 目录下面 `ifcfg-ens` 文件，一个网卡一个 `ifcfg`文件）。管理网卡的服务有两个，分别是：`network` 和 `NetworkManager`，前者是主流的使用方式，但后者的使用也非常方便。前者的使用特征是：手动编辑网卡配置文件  `ifcfg` ，然后重启 `network` 服务。后者的使用特征是：一个命令 `nmcli` 搞定配置文件 `ifcfg` 和重启服务。
+
+
+
+### 使用 network 服务配置IP地址
+
+#### 1. 编辑网卡配置文件 ifcfg
 
 ~~~bash
-# 配置网卡类型
 TYPE=Ethernet
-
-# 名字和设备
-NAME=ens192
-DEVICE=ens192
-
-# 配置ip获取方式
-# dchp  动态获取IP
-# static  手工指定IP
-# none  根据其他选项决定动态还是静态
 BOOTPROTO=static
+NAME=ens160
+UUID=dad59d0b-0ff6-4db8-94a0-5dd4e22fe011
+DEVICE=ens160
+ONBOOT=yes
+IPADDR=10.10.98.66
+PREFIX=21
+GATEWAY=10.1.1.1 
+DNS1=114.114.114.114
+DNS2=8.8.8.8
+~~~
 
-# 配置服务启动是否激活状态 yes or no
-ONBOOT=yes 
+上面是网卡配置文件 `ifcfg-ens160` 常用的配置字段，其中：
 
+-  `TYPE=Ethernet` 表示网卡类型为以太网网卡；
+- `BOOTPROTO` 指定获取 IP 的方式，值为 `static` 表示静态 IP，值为 `dhcp` 表示动态获取，值为 `none` 默认也是静态IP的方式。
+- `DEVICE` 网卡的设备名。
+- `NAME` 指定网卡的名字（建议和 `DEVICE` 保持一致），使用 `nmcli`命令会用到这个(connection name)。
+- `ONBOOT` 配置重启时时候自动激活网卡。`yes` 表示自动激活，`no` 不自动激活。
+- `IPADDR` 指定 IPV4 地址。
+- `GATEWAY` 指定网关地址。
+- `PREFIX` 指定子网掩码，使用位数表示。想要配置IP形式的子网掩码使用 `NETMASK=255.255.255.0`
+- `DNS1`/`DNS2` 指定 DNS 的地址，多个时通过尾部编号表示。
+
+
+
+#### 2. 重启 network 服务
+
+~~~bash
+systemctl restart network
+~~~
+
+
+
+#### 3. 查看配置是否生效
+
+~~~bash
+# 查看 ip 地址
+ifconfig
+
+# 查看 dns
+cat /etc/resolv.conf
+~~~
+
+
+
+#### 4. 补充其他配置字段
+
+~~~bash
 # 该文件是否被 如果NetworkManager服务管理
-NM_CONTROLLED=no    
-
-# 配置 IP地址 子网掩码 默认网关 NDS服务（可以有多个）
-IPADDR=10.1.1.11 　　　　 
-NETMASK=255.255.255.0   
-GATEWAY=10.1.1.1         
-DNS1=10.1.1.1           
-DNS2=8.8.8.8         
+# 配置该字段值为no, 重启 network服务; cmcli conn show 查不到该网卡信息
+NM_CONTROLLED=no     
 
 # MAC地址
 HWADDR=14:da:e9:eb:a9:61
@@ -231,27 +265,256 @@ IPV6INIT=yes
 PEERDNS=yes 　　
 ~~~
 
-上面是这个文件常用的配置字段及其解释，配置保存后，重启 network 服务，即可得到新的网卡信息。
+
+
+### 使用 NetworkManager 服务配置IP地址
+
+在 Centos7.9 上可以使用 `NetworkManager` 服务管理网卡，具体管理使用命令 `nmcli`。当 `NetworkManager` 启用时可以使用，当这个服务停掉后，就无法使用 `nmcli` 命令。
+
+在 Centos7.9 上如果希望某块网卡不要被 `NetworkManager` 管理， 可以在配置文件 `ifcfg` 中明确设置**`NM_CONTROLLED=no`**，那么这个网卡接口就不会由 `NetworkManager` 来管理。`NetworkManager` 会忽略这个配置文件，因此使用命令 `nmcli conn show` 也就不会显示它。
+
+在 Centos 7.9 中，`nmcli` 是**强大且首选**的网络配置工具。它与传统的编辑 `/etc/sysconfig/network-scripts/ifcfg-*` 文件的方式是**等效且同步的**——当你用 `nmcli` 修改配置后，它会自动写入对应的 `ifcfg` 文件，反之亦然。使用 `nmcli` 更不容易产生语法错误，并且命令可脚本化。
+
+#### 1. 启用 NetworkManager 服务
 
 ~~~bash
-systemctl restart network
+systemctl enable NetworkManager
+systemctl start NetworkManager
+systemctl status NetworkManager
+~~~
+
+#### 2. 查看网络连接
+
+连接是配置文件的逻辑概念，它可以被应用到设备上。
+
+~~~bash
+nmcli connection show
+# 或者简写
+nmcli con show
+
+# 显示更详细的信息
+nmcli con show --active
+~~~
+
+#### 3. 查看所有网络设备
+
+设备是物理或虚拟的网络接口。
+
+~~~bash
+nmcli device status
+# 或者简写
+nmcli dev status
+
+# 查看指定设备的详细信息（如 ens160）
+[root@centos ~]# nmcli dev show ens160
+GENERAL.DEVICE:                         ens160
+GENERAL.TYPE:                           ethernet
+GENERAL.HWADDR:                         00:10:56:3B:6B:42
+GENERAL.MTU:                            1500
+GENERAL.STATE:                          100（已连接）
+GENERAL.CONNECTION:                     ens160
+GENERAL.CON-PATH:                       /org/freedesktop/NetworkManager/ActiveConnection/8
+WIRED-PROPERTIES.CARRIER:               开
+IP4.ADDRESS[1]:                         10.10.98.66/21
+IP4.GATEWAY:                            10.10.100.254
+IP4.ROUTE[1]:                           dst = 10.10.96.0/21, nh = 0.0.0.0, mt = 102
+IP4.ROUTE[2]:                           dst = 0.0.0.0/0, nh = 10.10.100.254, mt = 102
+IP4.DNS[1]:                             114.114.114.114
+IP4.DNS[2]:                             8.8.8.8
+IP6.ADDRESS[1]:                         fe80::250:56ff:fe3b:6b42/64
+IP6.GATEWAY:                            --
+IP6.ROUTE[1]:                           dst = fe80::/64, nh = ::, mt = 102
+~~~
+
+#### 4. 配置静态IP
+
+新建连接 ens256，管理网卡设备 ens256，使用手动（静态ip）的方式，配置ip地址/子网掩码/网关/DNS等信息。命令执行后会新建一个名为 `ifcfg-ens256` 的网卡配置文件。
+
+~~~bash
+nmcli conn add \
+			type ethernet \
+			con-name "ens256" \
+			ifname ens256 \
+			ipv4.addresses 192.168.1.100/24 \
+			ipv4.gateway 192.168.1.1 \
+			ipv4.dns "8.8.8.8,1.1.1.1" \
+			ipv4.method manual
+~~~
+
+**参数解释：**
+- `con add`: 添加一个新连接。
+- `type ethernet`: 类型为以太网。
+- `con-name "my-static-ip"`: 连接名称。
+- `ifname ens192`: 应用的物理设备名。
+- `ipv4.addresses 192.168.1.100/24`: 静态 IP 地址和子网掩码。
+- `ipv4.gateway 192.168.1.1`: 默认网关。
+- `ipv4.dns "8.8.8.8,1.1.1.1"`: DNS 服务器，用逗号分隔。
+- `ipv4.method manual`: 使用手动配置（静态IP）。
+
+#### 5. 配置动态IP
+
+配置动态IP，使用 `ipv4.method auto`。命令执行后会新建一个名为 `ifcfg-ens256` 的网卡配置文件。
+
+~~~bash
+nmcli con add type ethernet con-name "ens256" ifname ens256 ipv4.method auto
+~~~
+
+#### 6. 激活链接
+
+~~~bash
+nmcli conn up ens256
+~~~
+
+#### 7. 修改现有连接
+
+已经存在的连接使用，可以修改它的配置数据。
+
+~~~bash
+# 修改 IP 地址
+nmcli con mod "ens256" ipv4.addresses 192.168.1.150/24
+
+# 添加一个额外的 DNS 服务器
+nmcli con mod "ens256" +ipv4.dns 192.168.1.53
+
+# 修改网关
+nmcli con mod "ens256" ipv4.gateway 192.168.1.254
+
+# 完全更改方法为 DHCP（会清除静态IP配置）
+nmcli con mod "ens256" ipv4.method auto
+
+# 再重新应用连接以使更改生效
+nmcli con down "ens256" &&nmcli con up "ens256"
+~~~
+
+#### 8. 连接管理
+
+~~~bash
+# 启用/禁用连接
+nmcli con up "ens256"
+
+# 禁用一个连接（会断开设备）
+nmcli con down "ens256"
+
+# 删除连接  !!!删除连接不会删除物理设备，只是删除了配置文件
+nmcli con del "ens256"
 ~~~
 
 
 
-## NetworkManager 服务
 
-在 centos7.9 虽然主流使用 network服务，但是也可以使用 NetworkManager 服务，并且它也是基于
 
-`/etc/sysconfig/network-scripts/` 下面网卡配置文件的。这个运行时可以使用 `nmcli` 命令来修改网卡配置信息（通过命令修改，不需要手动编辑文件了），NetworkManager 服务关闭时不可以使用 `nmcli` 命令。
+## RockyLinux9.6配置IP地址
+
+在RockyLinux9.6上已经不再使用 network 服务管理网卡接口了，只使用 NetworkManager 服务。配置文件也从 Centos7时代的 `/etc/sysconfig/network-scripts/ifcfg-ens*` 转为 `/etc/NetworkManager/system-connections/ens*.nmconnection`。
+
+在 RockyLinux9.6 上使用 `nmcli` 命令管理网卡，用法和在Centos7.9 上完全一样。下面是网卡 ens160 的配置文件信息（不用手动编辑，nmcli 命令会直接修改它）。
 
 ~~~bash
-nmcli con mod ens33 ipv4.addresses "192.168.1.100/24"
-nmcli con mod ens33 ipv4.gateway "192.168.1.1"
-nmcli con mod ens33 ipv4.dns "8.8.8.8,8.8.4.4"  # 多个dns
-nmcli con mod ens33 ipv4.method manual
- 
-nmcli con down ens33
-nmcli con up ens33
+[root@rocky system-connections]# cat ens160.nmconnection
+[connection]
+id=ens160
+uuid=cece4e39-4c36-30cb-82c2-88d8a2e035bf
+type=ethernet
+autoconnect-priority=-999
+interface-name=ens160
+timestamp=1755864492
+
+[ethernet]
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=eui64
+method=auto
+
+[proxy]
 ~~~
+
+
+
+## Ubuntu24.04.3 LTS 配置IP地址
+
+在 Ubuntu24中，**`systemd-networkd`** 是管理网络的首选方式之一，它是一个强大的系统级网络管理守护进程，它由 `systemd` 提供。它使用纯文本的 `.network`、`.netdev` 和 `.link` 文件进行配置，这些文件位于 `/etc/systemd/network/` 和 `/lib/systemd/network/` 目录。但是，除非你有特殊需求直接操作 `systemd-networkd`，否则通常**更推荐使用 Netplan** 来管理配置，因为它是发行版推荐的标准方式，能更好地处理与其他系统组件的集成。
+
+Netplan 本身不配置网络，它只是一个前端，根据其 YAML 配置文件（在 `/etc/netplan/` 目录下）生成后端的配置（systemd-networkd 的配置文件）。
+
+
+
+#### 1. 检查服务状态
+
+需要检查两个服务的状态：`systemd-networkd`  和 `systemd-resolved`。通常它俩配合工作，后者负责 DNS 解析。
+
+~~~bash
+sudo systemctl status systemd-networkd.service
+sudo systemctl status systemd-resolved.service
+~~~
+
+
+
+#### 2. 使用 netplan 配置ip
+
+使用命令 `netplan` 编辑目录 `/etc/netplan/` 下以 `yaml` 结尾的文件。编辑前先备份。配置静态ip需要把 `dhcp4` 的值修改为 `false`，同时提供 IP地址/网关/dns等信息。动态ip只需要把 `dhcp4` 的值修改为 `true` 即可。
+
+~~~bash
+# 备份
+cp 50-cloud-init.yaml 50-cloud-init.yaml.bak
+
+# 编辑文件50-cloud-init.yaml, 配置ens160网卡设备使用静态ip
+network:
+  version: 2
+  ethernets:
+    ens160:
+      dhcp4: false
+      addresses: [10.10.97.41/21]
+      routes:
+        - to: default
+          via: 10.10.100.254
+      nameservers:
+        addresses: [8.8.8.8,114.114.114.114]
+~~~
+
+
+
+#### 3. 应用配置
+
+执行 `netplan apply` 命令，Netplan 生成 `systemd-networkd` 配置，通知 `systemd-networkd` 重新加载。
+
+
+
+#### 4. 验证 ip地址配置
+
+~~~bash
+ip address show ens160
+
+# 使用 ifconfig 需要安装包 net-tools
+apt install net-tools
+ifconfig ens160
+~~~
+
+
+
+#### 5. 验证 dns 配置
+
+在 Ubuntu 24.04 中，`/etc/resolv.conf` 通常是一个指向 `/run/systemd/resolve/stub-resolv.conf` 的**软链接**。Ubuntu 默认使用 `systemd-resolved` 作为 DNS 解析管理器。它充当了一个本地 DNS 解析器的角色，并管理着所有网络接口的 DNS 配置。
+
+`systemd-resolved` 会动态生成 `/run/systemd/resolve/stub-resolv.conf` 文件。这个文件的目的**不是**为了直接显示您配置的所有 DNS 服务器，而是为了将本地应用程序的 DNS 查询请求**转发**到 `systemd-resolved` 服务本身（通过 127.0.0.53），所以 `cat /etc/resolve.conf` 不会直接显示您配置的所有 DNS 服务器。
+
+想要看具体 DNS 服务器，可以使用如下命令查看。
+
+~~~bash
+root@ubuntu:/etc/netplan# resolvectl status ens160
+Link 2 (ens160)
+    Current Scopes: DNS
+         Protocols: +DefaultRoute -LLMNR -mDNS -DNSOverTLS DNSSEC=no/unsupported
+       DNS Servers: 8.8.8.8 114.114.114.114
+~~~
+
+
+
+
+
+
+
+
 
