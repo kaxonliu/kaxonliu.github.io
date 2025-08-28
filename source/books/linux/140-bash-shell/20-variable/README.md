@@ -297,7 +297,25 @@ expr: 语法错误
 [root@centos ~]# x=10; let res=x++; echo $x; echo $res
 11
 10
+
+# x=i++ 先把i的值赋值给x，然后i再++
+# y=++j 先把j++，再把j的值赋值给y
+[root@rocky ~]# i=1
+[root@rocky ~]# j=1
+[root@rocky ~]# let x=i++
+[root@rocky ~]# let y=++j
+[root@rocky ~]# echo $i; echo $j; echo $x; echo $y
+2
+2
+1
+2
 ~~~
+
+
+
+
+
+
 
 ### 数字比较大小
 
@@ -364,7 +382,7 @@ fi
 
 #### 3. 浮点数比较大小
 
-浮点数比较大小需要使用 `bc`。判断正确 `bc` 返回1，判断错误返回0。
+浮点数比较大小需要使用 `bc`。判断正确返回1，判断错误返回0。
 
 ~~~bash
 [root@centos ~]# echo "19.3 >= 5.8" | bc
@@ -476,4 +494,311 @@ my name is ${name}
 [root@centos ~]# name="liu xu"; expr length "$name"
 6
 ~~~
+
+
+
+### 字符串切片 `${variable:start:length}`
+
+#### 语法
+
+~~~bash
+${string:start:length}
+~~~
+
+- `start` 起始位置（从 0 开始）
+- `length` 要提取子串的长度（可选）
+
+
+
+#### 仅指定起始位置
+
+仅指定起始位置，不指定长度，表示从起始位置切片到结尾。
+
+~~~bash
+[root@rocky ~]# msg='HelloWorld'; echo ${msg:2};
+lloWorld
+~~~
+
+#### 指定切片长度
+
+~~~bash
+[root@rocky ~]# msg='HelloWorld'; echo ${msg:0:4};
+Hell
+
+# 其实位置是0的时候，可以简写为
+[root@rocky ~]# msg='HelloWorld'; echo ${msg::4};
+Hell
+~~~
+
+#### 使用变量切片
+
+~~~bash
+[root@rocky ~]# s=3;l=3;msg='HelloWorld';echo ${msg:$s:$l};
+loW
+~~~
+
+#### 从右边开始切
+
+从右边开始切需要在第一个 `:` 和 `start` 之间必须有空格。
+
+~~~bash
+[root@rocky ~]# msg='HelloWorld'; echo ${msg: -5:3};
+Wor
+~~~
+
+
+
+### 字符串截断
+
+#### 截断左边的字符 `${variable# }`
+
+使用  `${变量名# } `截断左边的字符。`#` 后面跟上需要截断的子串。
+
+~~~bash
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url#www.}
+sina.com.cn
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url#*c}
+om.cn
+~~~
+
+使用 `${变量名#* }` 非贪婪截断。截断到第一个子串。
+
+~~~bash
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url#*w}
+ww.sina.com.cn
+~~~
+
+使用 `${变量名##* }` 贪婪截断。截断到最后一个子串。
+
+~~~bash
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url##*w}
+.sina.com.cn
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url##*c}
+n
+~~~
+
+#### 截断右边的字符  `${variable% }`
+
+使用  `${变量名% } `截断左边的字符。`%` 后面跟上需要截断的子串。
+
+~~~bash
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url%.cn}
+www.sina.com
+~~~
+
+使用 `${变量名%*}` 非贪婪截断。截断到第一个子串。
+
+~~~bash
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url%.*}
+www.sina.com
+
+# %.* 从右边开始找到第一个 . 然后把右边的(.cn)截掉
+~~~
+
+使用 `${变量名%%*}` 贪婪截断。截断到最后一个子串。
+
+~~~bash
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url%%.*}
+www
+
+# %%.* 从右边开始找，找到最后一个 . 然后把右边的(.sina.com.cn)截掉
+~~~
+
+
+
+### 字符出替换
+
+#### 普通替换 `${variable/old/new}`
+
+~~~bash
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url/n/N}
+www.siNa.com.cn
+~~~
+
+#### 贪婪替换 `${variable//old/new}`
+
+~~~bash
+[root@rocky ~]# url='www.sina.com.cn'; echo ${url//n/N}
+www.siNa.com.cN
+~~~
+
+
+
+### 字符串默认值替代
+
+#### 1. `${var-default}`
+
+当变量仅未定义时返回默认值，否则都返回变量自己的值（即变量值为空，也返回空）。不改变变量的值。
+
+~~~bash
+[root@rocky ~]# unset name;echo ${name-"liuxu"};echo $name;
+liuxu
+
+[root@rocky ~]# name="";echo ${name-"liuxu"};echo $name;
+
+
+[root@rocky ~]# name="kaxon";echo ${name-"liuxu"};echo $name;
+kaxon
+kaxon
+~~~
+
+#### 2. `${var:-default}`
+
+当变量存在且值非空则返回变量的值，当变量未定义或值为空则返回默认值。不改变变量的值。
+
+~~~bash
+[root@rocky ~]# unset name;echo ${name:-"liuxu"};echo $name;
+liuxu
+
+[root@rocky ~]# name="";echo ${name:-"liuxu"};echo $name;
+liuxu
+
+[root@rocky ~]# name="kaxon";echo ${name:-"liuxu"};echo $name;
+kaxon
+kaxon
+~~~
+
+#### 3. `${var:=default}`
+
+当变量存在且值非空，则返回变量的值，当变量为定义或值为空则返回默认值，并修改变量的值为默认值。
+
+~~~bash
+[root@rocky ~]# unset name;echo ${name:="liuxu"};echo $name;
+liuxu
+liuxu
+[root@rocky ~]# name="";echo ${name:="liuxu"};echo $name;
+liuxu
+liuxu
+[root@rocky ~]# name="kaxon";echo ${name:="liuxu"};echo $name;
+kaxon
+kaxon
+~~~
+
+#### 4. `${var:?eror_msg}`
+
+检查变量的值是否为空。当变量存在且值非空则返回变量的值，否则在终端打印错误信息。不修改变量值。
+
+~~~bash
+[root@rocky ~]# unset name;echo ${name:?"没有值啊"};echo $name;
+-bash: name: 没有值啊
+[root@rocky ~]# name="";echo ${name:?"没有值啊"};echo $name;
+-bash: name: 没有值啊
+[root@rocky ~]# name="kaxon";echo ${name:?"没有值啊"};echo $name;
+kaxon
+kaxon
+~~~
+
+#### 5. `${var:+replacement}`
+
+替代非空值。当变量存在且值非空则返回替换值，否则返回空。不修改变量值。
+
+~~~bash
+[root@rocky ~]# unset name;echo ${name:+"liuxu"};echo $name;
+
+
+[root@rocky ~]# name="";echo ${name:+"liuxu"};echo $name;
+
+
+[root@rocky ~]# name="kaxon";echo ${name:+"liuxu"};echo $name;
+liuxu
+kaxon
+~~~
+
+
+
+#### 总结表
+
+| 表达式                | 含义                     | 如果 `var` 已设置且非空 | 如果 `var` 未设置或为空                         |
+| :-------------------- | :----------------------- | :---------------------- | :---------------------------------------------- |
+| `${var:-default}`     | 使用默认值               | 返回 `$var` 的值        | 返回 `default`                                  |
+| `${var-default}`      | 使用默认值（仅未定义时） | 返回 `$var` 的值        | 返回 `default` (**空值仍返回空**)               |
+| `${var:=default}`     | 赋值并使用默认值         | 返回 `$var` 的值        | 将 `var` 的值设为 `default`，然后返回 `default` |
+| `${var:?error_msg}`   | 检查变量是否为空         | 返回 `$var` 的值        | 在 stderr 打印 `error_msg`，并**退出脚本**      |
+| `${var:+replacement}` | 替代非空值               | 返回 `replacement`      | 返回空                                          |
+
+
+
+
+
+## 数组的使用
+
+数组就是一堆数据的集合，一个数组内可以存放多个元素，元素的类型的任意的。数组可以分为两种，一种是**普通数组**，普通数组只能使用索引取值。另一种是**关联数组**，使用字符串取值，关联数组需要使用 `declare -A` 声明。
+
+
+
+### 普通数组
+
+#### 定义方式1
+
+使用 `()` 把多个元素包起来，空格间隔
+
+~~~bash
+names=("liuxu" "kaxon" "jack")
+~~~
+
+#### 定义方式2
+
+~~~bash
+data=([0]=18 [1]="liuxu" [2]="male")
+~~~
+
+####  定义方式3
+
+~~~bash
+array[0]="元素1"
+array[1]="元素2"
+array[2]="元素3"
+~~~
+
+#### 访问数组元素
+
+~~~bash
+# 访问第一个元素
+[root@rocky ~]# echo ${names[0]}
+liuxu
+
+# 访问数组的所有元素
+[root@rocky ~]# echo ${names[@]}
+liuxu kaxon jack
+
+
+# 获取数组的长度
+[root@rocky ~]# echo ${#names[@]}
+3
+~~~
+
+#### 遍历数组
+
+~~~bash
+names=("liuxu" "kaxon" "jack")
+for i in "${names[@]}";
+do
+    echo "$i"
+done
+~~~
+
+
+
+### 关联数组
+
+~~~bash
+# 必须先声明
+declare -A info
+
+# 赋值
+info["age"]=18
+info["name"]="liuxu"
+info["gender"]="male"
+
+# 取值
+[root@rocky ~]# echo ${info["name"]}
+liuxu
+[root@rocky ~]# echo ${info[*]}
+male 18 liuxu
+
+# 数组的长度
+[root@rocky ~]# echo ${#info[*]}
+3
+~~~
+
 
