@@ -380,3 +380,163 @@ until (( count > 5 ));do
 done
 ~~~
 
+
+
+## for 循环
+
+for 循环的特点是迭代循环。不同于 while 按条件循环，for 按照迭代次数来循环。
+
+### Bash风格的基本语法
+
+~~~bash
+for 变量 in 值列表
+do 
+    # 循环体代码
+done
+
+# 或者写在一行
+for 变量 in 值列表; do  命令快; done
+~~~
+
+#### 遍历值列表
+
+~~~bash
+for fruit in apple banana orange
+do
+    echo "I like $fruit"
+done
+~~~
+
+#### 遍历数字范围
+
+~~~bash
+# 使用 seq
+for i in `seq 1 3`; do echo $i; done
+
+# 指定步长
+for i in $(seq 10 -2 0); do echo $i; done
+
+# 使用 {a..b}
+for i in {1..3}; do echo $i; done
+
+# 指定步长
+for i in {1..10..2}; do echo $i; done
+
+# 数字倒序遍历
+for i in {5..1}; do echo $i; done
+~~~
+
+#### 遍历命令输出
+
+~~~bash
+# 使用反引号取命令的返回结果
+[root@rocky /]# for item in `ls /etc | head -3`; do echo $item; done
+DIR_COLORS
+DIR_COLORS.lightbgcolor
+GREP_COLORS
+
+
+# 使用 $() 取值
+for user in $(cat /etc/passwd | cut -d: -f1)
+do
+    echo $user
+done
+~~~
+
+
+
+### C语言风格的基本语法
+
+~~~bash
+for ((初值;条件;步长))
+do 
+    # 循环体代码
+done
+~~~
+
+#### 遍历数字
+
+~~~bash
+for ((i=1;i<=3;i++))
+do
+    echo $i;
+done
+~~~
+
+#### 指定步长
+
+~~~bash
+for (( i=0; i<10; i+=2)); do
+    echo $i
+done
+~~~
+
+#### 有初值可以简写
+
+~~~bash
+i=0
+for ((;i<3;i++)); do
+    echo $i
+done
+~~~
+
+#### 无限循环
+
+~~~bash
+#!/bin/bash
+
+# 无限循环（使用 break 退出）
+for (( ; ; ))
+do
+    echo "Press Ctrl+C to stop"
+    sleep 1
+done
+~~~
+
+
+
+## select
+
+`select` 是 shell 中用于创建简单文本菜单的强大工具，特别适用于交互式脚本。
+
+#### 基本语法
+
+~~~bash
+select variable in list
+do
+    commands
+done
+~~~
+
+#### 示例
+
+~~~bash
+#!/bin/bash
+
+# 简单的选择菜单
+echo "请选择你喜欢的水果:"
+select fruit in "苹果" "香蕉" "橙子" "退出"
+do
+    case $fruit in
+        "苹果")
+            echo "你选择了苹果"
+            ;;
+        "香蕉")
+            echo "你选择了香蕉"
+            ;;
+        "橙子")
+            echo "你选择了橙子"
+            ;;
+        "退出")
+            echo "再见!"
+            break
+            ;;
+        *)
+            echo "无效选择，请重新选择"
+            ;;
+    esac
+done
+~~~
+
+**补充**：默认的提示符是 `#?`，需要修改可以使用 `PS3=请输入你的选择 (1-4):`
+
