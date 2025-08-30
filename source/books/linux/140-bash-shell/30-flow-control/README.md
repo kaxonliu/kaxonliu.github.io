@@ -258,6 +258,17 @@ done
 
 
 
+### 使用 while 循环逐行读取文件
+
+~~~bash
+while read line
+do
+    echo $line
+done </etc/passwd
+~~~
+
+
+
 示例1：猜数字
 
 ~~~bash

@@ -722,83 +722,186 @@ kaxon
 
 ## 数组的使用
 
-数组就是一堆数据的集合，一个数组内可以存放多个元素，元素的类型的任意的。数组可以分为两种，一种是**普通数组**，普通数组只能使用索引取值。另一种是**关联数组**，使用字符串取值，关联数组需要使用 `declare -A` 声明。
+数组就是一堆数据的集合，一个数组内可以存放多个元素，元素的类型的任意的。数组可以分为两种，一种是**普通数组**，另一种是**关联数组**。
 
-
-
-### 普通数组
-
-#### 定义方式1
-
-使用 `()` 把多个元素包起来，空格间隔
+### 定义普通数组
 
 ~~~bash
+# 方式1
+# 使用 () 把多个元素包起来，空格间隔
 names=("liuxu" "kaxon" "jack")
-~~~
 
-#### 定义方式2
-
-~~~bash
+# 方式2
+# 直接在 () 内指定每个索引上的值，顺序无所谓
 data=([0]=18 [1]="liuxu" [2]="male")
-~~~
 
-####  定义方式3
-
-~~~bash
+# 方式3
+# 一个一个指定元素
 array[0]="元素1"
 array[1]="元素2"
 array[2]="元素3"
+
+# 方式4
+# 通过命令的结果生成数组
+nums=(`seq 1 10`)
 ~~~
 
-#### 访问数组元素
+### 定义关联数组
+
+关联数组定义时需要使用 `declare -A` 声明。
 
 ~~~bash
-# 访问第一个元素
-[root@rocky ~]# echo ${names[0]}
-liuxu
+declare -A info
 
-# 访问数组的所有元素
-[root@rocky ~]# echo ${names[@]}
-liuxu kaxon jack
-
-
-# 获取数组的长度
-[root@rocky ~]# echo ${#names[@]}
-3
+info["age"]=18
+info["name"]="liuxu"
+info["gender"]="male"
 ~~~
 
-#### 遍历数组
+
+
+### 查看数组
+
+- 查看声明过的所有数组：`declare -a`
+- 查看生命过的关联数组：`declare -A`
+- 查找一个，配合使用 `grep`
+
+
+
+### 访问数组元素
+
+通过索引的方式访问数组内的元素。普通数组使用数字索引，访问时可以使用负数表示从后往前数。关联数组的索引是字符串那就使用字符串访问，如果关联数组索引中存在数字，就使用数字访问。
 
 ~~~bash
-names=("liuxu" "kaxon" "jack")
-for i in "${names[@]}";
+# 定义普通数组
+nums=(`seq 1 10`)
+
+# 访问第1个和倒数第2个元素
+echo ${nums[1]}    # 输出 2
+echo ${nums[-2]}    # 输出 9
+
+# 访问所有元素，使用 * 或 @
+echo ${nums[*]}    # 输出 1 2 3 4 5 6 7 8 9 10
+
+echo ${nums[@]}    # 输出 1 2 3 4 5 6 7 8 9 10
+
+# 获取数组长度，使用 # 配合 * 或 @
+echo ${#nums[*]}    # 输出 10
+
+
+# 定义关联数组
+declare -A info
+info=([gender]="male" [0]="IT" [age]="18" [name]="liuxu" )
+
+# 通过索引访问数组元素
+echo ${info['name']}    # 输出 liuxu
+echo ${info[0]}    # 输出 IT
+~~~
+
+
+
+### 添加/修改数组元素
+
+修改数组就是把数组的内元素按照索引的方式更新即可，适用普通数组和关联数组。
+
+- 使用不存在的索引就是添加新元素。
+- 使用已经存在的所以就是更新值。
+
+~~~bash
+nums[2]=300
+info["age"]=19
+info["score"]=100
+~~~
+
+
+
+### 删除数组元素
+
+~~~bash
+# 删除一个元素
+unset nums[9]
+
+# 删除整个数组
+unset info
+~~~
+
+
+
+### 数组切片
+
+**语法：`${array[*]:start:length}`**
+
+示例：从第二个位置切，取4个元素，把切出来的数据放到一个新数组中
+
+~~~bash
+[root@rocky ~]# xxx=(${nums[*]:1:4})
+[root@rocky ~]# declare -a | grep xxx
+declare -a xxx=([0]="2" [1]="3" [2]="4" [3]="5")
+~~~
+
+
+
+
+
+### 遍历数组
+
+#### 方式1: 直接遍历值
+
+无论普通数组还是关联数组，获取数组的所有值然后使用 `for` 循环遍历即可。
+
+~~~bash
+for num in ${nums[*]}
 do
-    echo "$i"
+    echo $num
+done
+~~~
+
+#### 方式2：遍历索引然后取值
+
+获取数组的所有索序列，然后依次取值。适合普通数组和关联数组。
+
+~~~bash
+for idx in ${!info[*]}
+do 
+    echo ${info[$idx]}
 done
 ~~~
 
 
 
-### 关联数组
+#### 方式3：根据数组长度生成索引值
+
+这种方式只适用普通数组。原理：先获取 数组长度，然后生成索引值序列，依次遍历取值。
 
 ~~~bash
-# 必须先声明
-declare -A info
-
-# 赋值
-info["age"]=18
-info["name"]="liuxu"
-info["gender"]="male"
-
-# 取值
-[root@rocky ~]# echo ${info["name"]}
-liuxu
-[root@rocky ~]# echo ${info[*]}
-male 18 liuxu
-
-# 数组的长度
-[root@rocky ~]# echo ${#info[*]}
-3
+for ((i=0; i<${#nums[*]}; i++))
+do
+    echo ${nums[$i]}
+done
 ~~~
+
+
+
+
+
+### 示例：统计登陆shell的种类及其个数
+
+~~~bash
+#!/bin/bash
+
+declare -A shell_info
+
+while read line
+do
+     s=$(echo $line | awk -F ':' '{print $NF}')
+     ((shell_info[$s]++))
+done </etc/passwd
+
+for k in ${!shell_info[*]}
+do
+    printf "%s %s\n" $k ${shell_info[$k]}
+done
+~~~
+
 
 
