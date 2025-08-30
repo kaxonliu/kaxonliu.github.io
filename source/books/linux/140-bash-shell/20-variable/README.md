@@ -841,8 +841,6 @@ declare -a xxx=([0]="2" [1]="3" [2]="4" [3]="5")
 
 
 
-
-
 ### 遍历数组
 
 #### 方式1: 直接遍历值
@@ -879,6 +877,46 @@ do
     echo ${nums[$i]}
 done
 ~~~
+
+
+
+### 注意遍历元素中有包含空格的字符串
+
+如果数组中有元素是字符串，并且**字符串包含空格**，要**注意 `${array[*]}` 和 `${array[@]}` 的区别**。从下面的四个类似可以清楚的看出来，这种情况应该使用的遍历方式是：`"${array[@]}"`
+
+~~~bash
+# 定义数组
+fruits=("apple" "banana" "orange" "winter jujube")
+
+# 使用 ${fruits[*]}
+for f in ${fruits[*]};do echo $f;done
+apple
+banana
+orange
+winter
+jujube
+
+# 使用 ${fruits[@]}
+for f in ${fruits[@]};do echo $f;done
+apple
+banana
+orange
+winter
+jujube
+
+# 使用 "${fruits[*]}"
+for f in "${fruits[*]}";do echo $f;done
+apple banana orange winter jujube
+
+########## 使用 "${fruits[@]}"
+[root@rocky ~]# for f in "${fruits[@]}";do echo $f;done
+apple
+banana
+orange
+winter jujube
+~~~
+
+
 
 
 

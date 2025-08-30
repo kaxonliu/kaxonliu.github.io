@@ -80,6 +80,10 @@ function iter_echo(){
 iter_echo hello world "i am a student"
 ~~~
 
+> **注意**：需要注意函数接收的参数中如果含有包含空格的字符串，此时接收所有参数只能使用 `"$@"` 
+
+
+
 
 
 ### 使用 return 结束函数
