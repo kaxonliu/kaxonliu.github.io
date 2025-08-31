@@ -327,17 +327,88 @@ command | grep [选项] "模式"
 
 **常用选项**
 
-| **选项**    | **功能**                       | **示例**                            |
-| :---------- | :----------------------------- | :---------------------------------- |
-| `-i`        | 忽略大小写                     | `grep -i "error" log.txt`           |
-| `-v`        | **反向匹配**（输出不匹配的行） | `grep -v "success" log.txt`         |
-| `-n`        | 显示匹配行的行号               | `grep -n "warning" log.txt`         |
-| `-c`        | 统计匹配的行数                 | `grep -c "404" access.log`          |
-| `-l`        | 仅显示包含匹配项的文件名       | `grep -l "main" *.c`                |
-| `-r` / `-R` | **递归搜索**（用于目录）       | `grep -r "function" /path/to/dir`   |
-| `-w`        | 匹配整个单词（避免部分匹配）   | `grep -w "get" file.txt`            |
-| `-A n`      | 显示匹配行及其后 **n 行**      | `grep -A 2 "error" log.txt`         |
-| `-B n`      | 显示匹配行及其前 **n 行**      | `grep -B 2 "error" log.txt`         |
-| `-C n`      | 显示匹配行及其前后 **n 行**    | `grep -C 2 "error" log.txt`         |
-| `-e`        | 指定多个模式                   | `grep -e "error" -e "fail" log.txt` |
+| **选项**    | **功能**                                                     |
+| :---------- | :----------------------------------------------------------- |
+| `-i`        | 忽略大小写                                                   |
+| `-o`        | 只显示匹配的内容                                             |
+| `-q`        | 静默输出不要输出，可以配合 `$?` 判断匹配成功与否             |
+| `-v`        | **反向匹配**（输出不匹配的行）                               |
+| `-n`        | 显示匹配行的行号                                             |
+| `-c`        | 统计匹配的行数                                               |
+| `-l`        | 仅显示包含匹配项的文件名，通常和 `-r` 一块使用。如 `grep -rl "root" /etc` |
+| `-r` / `-R` | **递归搜索**（用于目录）                                     |
+| `-w`        | 匹配整个单词（避免部分匹配）                                 |
+| `-A n`      | 显示匹配行及其后 **n 行**                                    |
+| `-B n`      | 显示匹配行及其前 **n 行**                                    |
+| `-C n`      | 显示匹配行及其前后 **n 行**                                  |
+| `-E`        | 等同于 `egerp` 扩展正则                                      |
+
+
+
+#### 参数 n
+
+~~~bash
+# 显示行号
+[root@rocky ~]# grep -n  "root" /etc/passwd
+1:root:x:0:0:root:/root:/bin/bash
+10:operator:x:11:0:operator:/root:/sbin/nologin
+~~~
+
+
+
+#### 参数 o
+
+~~~bash
+# 只显示匹配的内容
+[root@rocky ~]# grep "liuxu" /etc/passwd
+liuxu:x:1000:1000::/home/liuxu:/bin/bash
+[root@rocky ~]# grep -o  "liuxu" /etc/passwd
+liuxu
+liuxu
+~~~
+
+
+
+#### 参数 r 和 l
+
+~~~bash
+# 只使用 r 会显示文件中匹配出的信息；配合 l 可以只显示文件名
+[root@rocky ~]# grep -r "liuxu" /etc
+/etc/group:liuxu:x:1000:
+/etc/gshadow:liuxu:!::
+/etc/passwd:liuxu:x:1000:1000::/home/liuxu:/bin/bash
+/etc/shadow:liuxu:!!:20330:0:99999:7:::
+/etc/subgid:liuxu:100000:65536
+/etc/subuid:liuxu:100000:65536
+[root@rocky ~]#
+[root@rocky ~]# grep -rl  "liuxu" /etc
+/etc/group
+/etc/gshadow
+/etc/passwd
+/etc/shadow
+/etc/subgid
+/etc/subuid
+~~~
+
+
+
+#### 关闭过滤时的默认输出
+
+~~~bash
+# grep “nginx” 这个命令本身展示了如下信息
+[root@rocky ~]# ps aux | grep "nginx"
+root        6290  0.0  0.0   3584  1664 pts/1    S+   04:53   0:00 grep --color=auto nginx
+[root@rocky ~]#
+
+
+# 方式1
+[root@rocky ~]# ps aux | grep "[n]ginx"
+[root@rocky ~]# echo $?
+1
+
+# 方式2
+[root@rocky ~]# ps aux | grep "nginx"|grep -v "grep"
+[root@rocky ~]# echo $?
+1
+~~~
 
