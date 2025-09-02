@@ -161,7 +161,7 @@ grep "ERROR" logfile | sort | uniq -c | sort -nr
 
 ## wc
 
-`wc`（word count）是 Linux 中用于统计文件或输入流中字节数、字数、行数等信息的实用命令。
+`wc`（word count）是 Linux 中用于统计文件或输入流中的字节数、字数、行数等信息的实用命令。
 
 ### 基本语法
 
@@ -295,7 +295,7 @@ lz@mac aaa %
 
 ### 打包
 
-使用 `tar` 命令可以把多个文件打包成一个文件。如：把 split_打头的文件打包到一个名为 aaa.tar 的文件中。其中：`-c` 表示创建新的归档文件，`-v`显示详细过程，`-f`指定归档文件名（必须放在最后）。
+使用 `tar` 命令可以把多个文件打包成一个文件。如：把 split_打头的文件打包到一个名为 aaa.tar 的文件中。其中：`-c` 表示创建新的归档文件，`-v` 显示详细过程，`-f` 指定归档文件名（必须放在最后）。
 
 ~~~bash
 tar -cvf  aaa.tar split_*
@@ -303,7 +303,7 @@ tar -cvf  aaa.tar split_*
 
 #### 拆包
 
-把打包文件拆分成原始文件。其中，`-x`表示从归档文件中提取文件。
+把打包文件拆分成原始文件。其中，`-x` 表示从归档文件中提取文件。
 
 ~~~bash
 tar -xvf a.tar 
@@ -341,7 +341,7 @@ tar -cvjf b.tar.bz2 split_*
 
 ### 解压缩
 
-使用 `tar` 命令解压缩。如：把`a.tar.gz`解压缩当前文件夹。其中，`-x`表示解压缩
+使用 `tar` 命令解压缩。如：把`a.tar.gz` 解压缩当前文件夹。其中，`-x `表示解压缩
 
 ~~~bash
 rm -f split_*
@@ -352,7 +352,7 @@ tar -xvf a.tar.gz
 
 ### zip 和 unzip
 
-zip格式的压缩包是在windows上linux上通用的格式的压缩文件。 如果没有这两个命令，要安装：`yum install -y zip unzip`
+zip 格式的压缩包是在 windows 和 linux 上通用的格式的压缩文件。 如果没有这两个命令，要安装：`yum install -y zip unzip`
 
 **压缩 zip** 
 

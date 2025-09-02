@@ -1,6 +1,6 @@
 # systemctl 管理服务
 
-在 Centos7 及更高版本上，`systemctl` 是管理系统和服务的主要工具。使用 `systemctl` 管理服务需要为编写服务文件。服务文件存放在两个文件夹中，
+在 Centos7 及更高版本上，`systemctl` 是管理系统和服务的主要工具。使用 `systemctl` 管理服务需要编写服务文件。服务文件存放在两个文件夹中，
 - `/usr/lib/systemd/system/` 系统服务，开机不需要登陆就运行的服务。
 - `/usr/lib/systemd/user/` 用户服务，用户登陆后运行的服务。
 
