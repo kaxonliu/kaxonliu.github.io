@@ -12,6 +12,8 @@ site:
   navigation:
     - title: Linux
       uri: /books/linux/index.html
+    - title: Architecture
+      uri: /books/architecture/index.html
     - title: Docker
       uri: /books/docker/index.html
     - title: 外出看看
