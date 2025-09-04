@@ -79,6 +79,8 @@ setenforce  0
 
 ~~~bash
 sed -i 's#SELINUX=enforcing#SELINUX=disabled#g' /etc/selinux/config
+
+# 然后再重启
 ~~~
 
 

@@ -356,7 +356,7 @@ rsync -av --delete /path/to/source/ /path/to/backup/111
 rsync -av --delete  --link-dest /path/to/backup/111 /path/to/source/ /path/to/backup/222
 ~~~
 
-
+>**注意：上述路径全部使用绝对路径**
 
 #### 恢复简单
 
@@ -368,34 +368,66 @@ rsync -av --delete  --link-dest /path/to/backup/111 /path/to/source/ /path/to/ba
 
 ## 自动rsync增量备份脚本
 
+### 创建备份目录结构
+
+~~~bash
+/test/backups/
+├── backup-2023-10-27-103000/
+├── backup-2023-10-28-103000/
+└── backup-latest -> backup-2023-10-28-103000/ (一个符号链接，指向最新备份)
+~~~
+
+### 编写备份脚本(backup.sh)
+
 ~~~bash
 #!/bin/bash
 
-SOURCE_DIR="/data/"
-BACKUP_ROOT='/tmp/data/'
+SOURCE_DIR="/test/aaa/"
+BACKUP_ROOT='/test/backups'
 
-DATE=$(date "+%F")
-BACKUP_DIR="${BACKUP_ROOT}${DATE}"
+DATE=$(date +%Y-%m-%d-%H%M%S)
+BACKUP_DIR="${BACKUP_ROOT}/backup-${DATE}"
+LATEST_BACKUP="$BACKUP_ROOT/backup-latest"
 
-LAST_BACKUP=""
+
+if [[ -L "$LATEST_BACKUP" ]]; then
+    rsync -a --delete --link-dest "$LATEST_BACKUP" "$SOURCE_DIR" "$BACKUP_DIR"
+    rm -f "$LATEST_BACKUP"
+else
+    rsync -a --delete "$SOURCE_DIR" "$BACKUP_DIR"
+
+fi
 
 
-rsync -av --delete --link-dest="$LAST_BACKUP" "$SOURCE_DIR" "$BACKUP_DIR"
+# 更新 latest 符号链接，指向这次最新的备份
+ln -s "$BACKUP_DIR" "$LATEST_BACKUP"
 ~~~
 
 
 
+### 使用计划任务 cron
+
+编辑 crontab (`crontab -e`)，添加一行，例如每天凌晨 2 点执行：
+
+```tex
+0 2 * * * /test/backup.sh
+```
 
 
 
 
 
+## 总结 rsync
+- IO 效率高，但耗费 cpu 资源
+- rsync 不适合频繁改动的文件，因为改动需要高频计算消耗cpu；rsync 不适合大文件同样是大量计算。
+- rsync 可以实现类似 cp 或者 scp 的功能。
 
 
 
+## 架构中对rsync的使用
 
-
-
+- rsync + cron计划任务，实现增量备份（无法时时备份同步）。
+- rsync + inotify （或者使用 sersync）做到时时同步数据。
 
 
 
