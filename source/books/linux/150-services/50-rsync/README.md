@@ -116,9 +116,7 @@ rsync -av --include='[0-9].txt' --exclude='*' /drc/project/ /dst/project
 rsync -avz a root@10.10.97.210:/data
 ~~~
 
-
-
-#### **使用非标准 SSH 端口** (例如 2022)
+##### **使用非标准 SSH 端口** (例如 2022)
 
 ~~~bash
 rsync -avz -e "ssh -p 2022" /local/path/ user@myserver.com:/remote/path/
@@ -328,6 +326,96 @@ rsync -az --progress --partial --bwlimit=10  abc rsync://liuxu@10.10.97.210/back
 # 第二次传输时 重新执行命令后断点续传，先计算断点位置，完毕后续传，然后新内容与旧内容合并到一起
 rsync -az --progress --partial --bwlimit=10  abc rsync://liuxu@10.10.97.210/backup
 ~~~
+
+
+
+## rsync 实现增量备份
+
+增量备份的思想：第一次备份是全量备份，从第二次开始，每一次都和上一次的备份做比较，看是否有新增的，如果则备份。
+
+`rsync` 是实现增量备份的绝佳工具，它通过其独特的算法，仅传输源文件和目标文件之间的差异部分，从而实现高效备份。
+
+
+
+#### 第一次全量备份
+
+```bash
+rsync -av --delete /path/to/source/ /path/to/backup/111
+```
+
+
+
+#### 第二次增量备份
+
+结合 `--link-dest` 参数和硬链接技术，可以实现保留历史版本的增量备份，同时极大节省空间。
+
+- `--link-dest`： 让 `rsync` 在创建新备份时，先去参考上一个备份（`--link-dest` 指定的目录）。如果文件没有变化，它不会复制文件内容，而是创建一个指向之前备份文件的硬链接。如果文件变化了，则复制新内容。
+- **硬链接**：多个文件名指向同一个磁盘上的数据块。只有当所有硬链接都被删除时，数据才会真正被释放。修改文件内容会创建一个新的数据块，不会影响其他硬链接。
+
+~~~bash
+rsync -av --delete  --link-dest /path/to/backup/111 /path/to/source/ /path/to/backup/222
+~~~
+
+
+
+#### 恢复简单
+
+因为使用了硬连接的方式，所以恢复时不再需要链式恢复，而是从备份点直接恢复。
+
+
+
+
+
+## 自动rsync增量备份脚本
+
+~~~bash
+#!/bin/bash
+
+SOURCE_DIR="/data/"
+BACKUP_ROOT='/tmp/data/'
+
+DATE=$(date "+%F")
+BACKUP_DIR="${BACKUP_ROOT}${DATE}"
+
+LAST_BACKUP=""
+
+
+rsync -av --delete --link-dest="$LAST_BACKUP" "$SOURCE_DIR" "$BACKUP_DIR"
+~~~
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
