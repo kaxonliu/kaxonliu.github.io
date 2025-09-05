@@ -197,11 +197,108 @@ tmpfs                196M     0  196M   0% /run/user/0
 
 
 
-### inofity的基本使用
+### inofity 基本使用
+
+#### 安装 inotify
+
+`inotify` 由 `inotify-tools` 包提供。安装之前，确保内核高于 2.6.13, 并检查 `/proc/sys/fs/inotify/` 目录下面由以下三项，这表示系统支持 `inotify`监控。
+
+~~~bash
+[root@rocky data]# ls -l /proc/sys/fs/inotify/
+total 0
+-rw-r--r--. 1 root root 0 Sep  5  2025 max_queued_events
+-rw-r--r--. 1 root root 0 Sep  5  2025 max_user_instances
+-rw-r--r--. 1 root root 0 Sep  5  2025 max_user_watches
+~~~
+
+epel 源提供 `inotify-tools` 工具
+
+~~~bash
+yum install epel-release* -y
+yum install inotify-tools -y
+~~~
+
+`inotify` 安装后提供了两个命令可以使用
+
+~~~bash
+[root@rocky data]# rpm -ql inotify-tools | grep bin/
+/usr/bin/inotifywait
+/usr/bin/inotifywatch
+~~~
+
+#### 监控文件夹内的变动
+
+使用 `inotifywait` 监听 `/data` 文件夹内的变化，执行如下命令，指定监听的信号类型，一旦有文件的增删改就会手动信号，信号按照指定的格式发出。
+
+~~~bash
+inotifywait -mrq --timefmt '%Y-%m-%d %H:%M:%S' --format '%w%f:%Xe:%T' -e create,delete,modify,move,attrib,close_write /data
+~~~
+
+比如新建文件 `touch 3.txt` 就会收到如下信息
+
+~~~bash
+/data/3.txt:CREATE:2025-09-05 15:34:44
+/data/3.txt:ATTRIB:2025-09-05 15:34:44
+/data/3.txt:CLOSE_WRITEXCLOSE:2025-09-05 15:34:44
+~~~
 
 
 
+#### inotify 信号类型
+
+| 类型          | 解释说明                                           |
+| :------------ | :------------------------------------------------- |
+| access        | 文件被访问（读取）。                               |
+| modify        | 文件被修改（内容发生改变）。                       |
+| attrib        | 文件的元数据发生变化（如权限、时间戳等）。         |
+| close_write   | 以写模式打开的文件被关闭。表示文件写入完成并保存。 |
+| close_nowrite | 以只读模式打开的文件被关闭。                       |
+| close         | close_write 和 close_nowrite 的结合。              |
+| moved_from    | 文件被移出受监控的目录（移动操作的来源）。         |
+| moved_to      | 文件被移入受监控的目录（移动操作的目标）。         |
+| move          | moved_from 和 moved_to 的结合。                    |
+| create        | 在受监控的目录内创建了新文件或子目录。             |
+| delete        | 在受监控的目录内有文件或子目录被删除。             |
+| delete_self   | 受监控的文件或目录本身被删除。监控停止。           |
+| move_self     | 受监控的文件或目录本身被移动或重命名。             |
 
 
 
+### rsync + notify 脚本
+
+在主文件服务器上执行同步镜像的脚本，把变动的数据同步到远程镜像文件服务器。如果 rsync 远程同步使用 rsync 协议，则备份服务器要开启 rsyncd 服务，否则不需要。注意：不论 rsync 使用 ssh 协议还是 rsync 协议，主文件服务器和备份文件服务器都要安装 rsync 命令。
+
+~~~bash
+[root@rocky scripts]# cat rsync_inotify.sh 
+watch_dir=/data/               # 本地被监控目录
+user="rsync_user"                    # 虚拟用户
+export RSYNC_PASSWORD=123      # 虚拟用户密码
+module="backup"                   # 远程模块名
+ip=10.10.98.66               # 远程主机ip
+ 
+# 先整体同步一次
+rsync -azc --delete ${watch_dir} ${user}@${ip}::${module}
+ 
+# 切换到被监控目录下，然后用inotifywait监控./目录，这样后期就可以用-R选项同步新增的子目录
+cd $watch_dir  
+/usr/bin/inotifywait -mrq --timefmt '%Y-%m-%d %H:%M:%S' --format '%w%f:%Xe:%T' -e create,delete,modify,move,attrib,close_write ./ \
+--exclude=".*.swp" | \
+while read line
+do
+    # $line的输出format为：文件路径:事件:时间
+    FILE=$(echo $line | awk -F: '{print $1}')  # 获取文件的绝对路径
+    EVENT=$(echo $line | awk -F: '{print $2}') # 获取监控的事件
+ 
+    # 监控到对文件的下述行为后，只把文件同步到远端
+    if [[ $EVENT =~ 'CREATE' ]] || [[ $EVENT =~ 'MODIFY' ]] || [[ $EVENT =~ 'CLOSE_WRITE' ]] || [[ $EVENT =~ 'MOVED_TO' ]] || [[ $EVENT =~ 'ATTRIB' ]];then
+        rsync -azcR ${FILE} ${user}@${ip}::${module}
+    fi
+ 
+    # 监控到涉及到目录的改动，将目录同步到远端，例如用dirname ${FILE}获取目录
+    if [[ $EVENT =~ 'DELETE' ]] || [[ $EVENT =~ 'MOVED_FROM' ]];then
+        rsync -azcR --delete $(dirname ${FILE}) ${user}@${ip}::${module} &>/dev/null
+    fi
+done &
+# 末尾的&符号，代表在子shell中提交命令，这样进程的ppid就变为1，当前窗口关闭，该进程依然存活
+~~~
 
