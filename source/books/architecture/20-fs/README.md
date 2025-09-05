@@ -80,6 +80,9 @@ chown -R nfsnobody.nfsnobody /data/
 ~~~bash
 systemctl start rpcbind
 
+# centos7.9
+systemctl start nfs
+
 # rockylinux9 使用 nfs-server
 systemctl start nfs-server
 ~~~
@@ -138,9 +141,7 @@ tmpfs                196M     0  196M   0% /run/user/0
 -rw-r--r--. 1 nfsnobody nfsnobody 0 Sep  4 22:06 abc
 ~~~
 
->注意：客户端查看文件看到文件的属主和属组是 uid 和 gid，这里是因为在客户端预先创建了匿名用户和组。
-
-
+>**注意**：客户端看到文件的属主和属组是 uid 和 gid，这里是因为在客户端预先创建了匿名用户和组。
 
 #### 6. 设置开机挂载
 
