@@ -1,4 +1,4 @@
-# WEB部署协议
+# web服务器协议
 
 一个完整的 web 服务系统由两部分组成，分别是 web服务 和 web 应用。
 
@@ -53,7 +53,11 @@ php-fpm 不支持 http 协议，所以要在它的前面使用 Nginx 或 Apahe�
 
 Nginx 做 web 服务器，无法直接使用 FastCGI，需要启用模块 `ngx_http_fastcgi_module` 进行代理配置。
 
+![](fastcgi.png)
 
+
+
+![](fastcgi-nginx.png)
 
 
 
@@ -114,6 +118,10 @@ uwsgi 协议的设计目标非常明确：
 
 
 
+![](wsgi.png)
+
+
+
 ### uWSGI
 
 **uWSGI** 是一个**全功能的、高性能的 C 语言编写的应用服务器容器**。它的目标是提供完整的堆栈，用于构建托管服务。**关键点：**
@@ -129,7 +137,7 @@ uWSGI 非常强大，甚至可以称之为“瑞士军刀”：
 4. **静态文件服务**：可以直接提供静态文件，虽然生产环境通常还是交给 Nginx。
 5. **热重载**：可以在不中断服务的情况下重新加载应用代码。
 
-虽然 uWSGI 服务器可以通过 WSGI 协议直接与 Python 应用通信，但当它和 Nginx 交互时，使用自有的 **uwsgi 协议**（而不是 HTTP 或 FastCGI）可以获得更高的效率和更低的开销。
+uWSGI 服务器通过 WSGI 协议直接与 Python 应用通信，但当它和 Nginx 交互时，使用自有的 **uwsgi 协议**（而不是 HTTP 或 FastCGI）可以获得更高的效率和更低的开销。
 
 
 
@@ -137,11 +145,43 @@ uWSGI 非常强大，甚至可以称之为“瑞士军刀”：
 
 ## asgi 协议
 
+**ASGI** 的全称是 **Asynchronous Server Gateway Interface**（异步服务器网关接口）。它是一个**规范**，描述了Web服务器（如 Uvicorn, Daphne）如何与用 Python 编写的异步Web应用程序（或框架，如 FastAPI, Starlette, Django Channels）进行通信。你可以把它看作是 WSGI 的异步异步版本。
+
+在 ASGI 之前，Python Web 世界的主流标准是 **WSGI**。WSGI 是为传统的同步Web框架（如 Flask, Django）设计的，它在处理请求时是同步和阻塞的。
+
+#### asgi的优势：
+
+- **异步和高性能**： 充分利用 Python 的 `async/await`，避免阻塞，极大地提高了 I/O 密集型应用（如大量数据库查询、外部API调用）的并发能力。
+- **多协议支持**： 不仅支持 HTTP，还原生支持 WebSocket、HTTP/2 等协议，为构建实时应用提供了统一的基础。
+- **更好的生命周期管理**： ASGI 规范定义了启动和关闭事件，允许应用程序在服务器启动时初始化资源（如连接数据库池），并在关闭时优雅地清理资源。
+
+
+
+![](asgi.png)
+
+#### 两类 asgi 服务器
+
+| asgi               | Uvicorn                                                      | Daphne                                                       |
+| :----------------- | :----------------------------------------------------------- | :----------------------------------------------------------- |
+| **出身与背景**     | 由 **Starlette** 团队开发，后来成为 **FastAPI** 生态系统的**官方推荐**服务器。 | 由 **Django** 团队开发，是 **Django Channels** 的**官方推荐**服务器。 |
+| **核心设计目标**   | 轻量、快速、易于使用。主要专注于 HTTP 和 WebSocket。         | 作为 **Django Channels** 的接口服务器，设计目标是支持**多种协议**（HTTP, WebSocket, HTTP2, Chromecast 等）。 |
+| **协议支持**       | 主要支持 **HTTP/1.1** 和 **WebSocket**。对 HTTP/2 的支持需要通过 `httptools` 和 `h11` 等库，并且不如 Daphne 原生。 | **原生支持更多协议**，包括 HTTP/1.1, HTTP/2, WebSocket。它的架构就是为了多协议而设计的。 |
+| **性能特点**       | 极其**轻量和快速**。其核心非常精简，使用 C 语言编写的依赖（如 `uvloop` 和 `httptools`）来最大化性能。在纯 HTTP 基准测试中通常表现略优于 Daphne。 | 也非常快，但因其更复杂的多协议设计，在纯 HTTP 场景下可能比极致优化的 Uvicorn **稍慢一点点**（差异通常很小）。 |
+| **生态系统与集成** | **与 FastAPI/Starlette 深度集成**，是它们的默认选择。通常与 Gunicorn 作为进程管理器配合使用（`uvicorn.workers.UvicornWorker`）。 | **与 Django Channels 深度绑定**，是运行 Channels 应用的默认和标准方式。 |
+
+##### 总结：对于大多数现代异步 Python Web 开发（尤其是 FastAPI），**Uvicorn 是默认且主流的选择**。只有当你深度使用 **Django Channels** 时，**Daphne** 才是那个自然而然、官方支持的选项。
 
 
 
 
 
+## ngin支持多种协议
+
+在配置是使用不同的协议，配置不同的参数。
+
+- http 协议：`proxy_pass`
+- fastcgi 协议：`fastcgi_pass`
+- uwsgi 协议：`uswgi_pass`
 
 
 
