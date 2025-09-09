@@ -1,5 +1,52 @@
 # 部署 python
 
+## 安装 python 解释器
+
+**1. 安装1.1版本的 openssl**
+
+~~~bash
+wget https://www.openssl.org/source/openssl-1.1.1n.tar.gz --no-check-certificate
+tar xf openssl-1.1.1n.tar.gz 
+cd openssl-1.1.1n
+./config --prefix=/usr/local/openssl
+make && make install
+~~~
+
+**2. 安装 python3.10** 
+
+~~~bash
+wget https://www.python.org/ftp/python/3.10.12/Python-3.10.12.tgz
+tar xf Python-3.10.12.tgz
+yum install libffi* libffi-devel* -y  # 依赖
+./configure --prefix=/usr/local/python3.10.12 --with-openssl=/usr/local/openssl --with-openssl-rpath=auto  
+make && make install
+ 
+vim /etc/profile 添加两行
+PATH=/usr/local/python3.10.12/bin/:$PATH
+export PATH
+ 
+source /etc/profile
+~~~
+
+**3. 使用虚拟环境**
+
+~~~bash
+[root@rocky ~]# python3 -m venv venv   # 创建虚拟环境
+[root@rocky ~]# 
+[root@rocky ~]# source venv/bin/activate  #进入虚拟环境
+(venv) [root@rocky ~]# 
+(venv) [root@rocky ~]# deactivate # 退出虚拟环境
+[root@rocky ~]# 
+~~~
+
+**4. 在虚拟环境中安装项目依赖包**
+
+~~~bash
+pip install -r requiremrnts
+~~~
+
+
+
 ## uwsgi 拉起 web 应用
 
 uwsgi 服务和 web 应用之间使用 wsgi 协议，虽然 uwsgi 服务支持 http 协议，可以直接对外使用，但是建议在 uwsgi 前面加一个 nginx 服务。uwsgi 服务和 nginx 服务之间可以使用高效率的 uwsgi 协议也可以使用普通的 http 协议。
