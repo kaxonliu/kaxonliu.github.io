@@ -775,5 +775,181 @@ location  ~*  路径部分   # 大小写不敏感
 
 
 
+## server之return 指令
+
+`return` 指令的作用是停止处理请求，直接返回响应内容。执行 return 指令后，location 中的后续指令不会被执行。
+
+~~~nginx
+# 用法
+return code [text];
+return code URL;		# 常用语重定向
+return URL          # 需要 http 或 https 开头的 URL
 
 
+# 示例
+location ^~ /return00 {
+    return 403;
+}
+
+location ^~ /return01 {
+    default_type text/html;  # 必须告诉浏览器return内容的类型
+    return 200 'request success';
+}
+
+location ^~ /return02 {
+    return 302 /hello;
+}
+
+location ^~ /return03 {
+    return http://kaxonliu.top;   # 默认响应状态码是 302
+}
+
+location ^~ /return05 {
+    default_type application/octet-stream;   # 下载文件
+    return 200 'egon say hello';
+}
+~~~
+
+
+
+>扩展：**301 和 302 重定向**
+>
+>301 永久重定向。第一个请求由服务端处理，后面就不再请求服务端（浏览器缓存记录的结果）。
+>
+>302 临时重定向。每次请求都打向服务端，走一遍重定向流程。
+
+
+
+## root 指令和 alias 指令
+
+相同点：都是用来指定资源的查找路径
+
+不同点：
+
+- root 指令是为当前location 定义了访问的根目录。完整的资源路径是: root + 请求 uri
+
+比如用户访问：http://192.168.10.112:8080/books/cat/xxx/yyy
+
+root配置如下，则完整资源路径为：/var/www/html/books/cat/xxx/yyy
+
+~~~nginx
+location /books/cat {
+    root /var/www/html;
+}
+~~~
+
+- alias 指令也规定了一个路径，但是不是根目录。alias 会把自己的路径替换 location 规则匹配的路径，得到一个完整的资源路径。
+
+比如用户访问：http://192.168.10.112:8080/books/cat/xxx/yyy
+
+alias 配置如下，则完整资源路径为：/a/b/c/xxx/yyy
+
+~~~nginx
+location /books/cat {
+    alias /a/b/c;
+}
+~~~
+
+
+
+## index 指令
+
+没有指定资源文件时，默认使用的资源文件，可以配置有多个，依次查找
+
+~~~nginx
+location / {
+    index index.html 1.txt 2.txt;
+}
+~~~
+
+
+
+## 代理的类型
+
+正向代理
+
+- 代理客户端。用户需要设置
+
+反向代理
+
+- 代理服务端
+
+透明代理
+
+- 代理客户端的，用户无感知（即不需要设置），需要和客户端在一个局域网。用做用户上网行为分析。
+
+
+
+## upstream 负载均衡配置健康检查
+
+upstream 中的配置选项
+
+~~~bash
+down 节点下线
+backup 备用节点，平是不工作，其他节点全部挂掉后才开始工作
+max_fails 允许请求失败的次数
+fail_timeout 经过 max_fails失败后，该节点被暂停代理的时间
+max_conn 限制最大的接收连接受
+
+
+#上游服务列表
+upstream test_balance {
+    server 192.168.43.100:8080 max_fails=3 fail_timeout=5s;
+    server 192.168.43.101:8080 max_fails=3 fail_timeout=5s;
+    server 192.168.43.102:8080 backup;
+    server 192.168.43.103:8080 down;
+}
+
+server {
+    listen 8888;
+    server_name localhost;
+    location ^~ /test/ {
+        proxy_pass http://test_balance;
+    }
+}
+~~~
+
+
+
+### 慢启动方案
+
+付费版才能使用慢启动参数 。开源版本可以降低轮训权重的方式减少启动时的流量压力。
+
+~~~nginx
+upstream backend {
+    server backend1.example.com slow_start=30s;
+    server backend2.example.com;
+    server backend3.example.com;
+}
+~~~
+
+
+
+### 健康检查
+
+参数 max_fails=3 fail_timeout=5s; 只能检查服务节点是否挂掉。但是后端代码内部报错返回 5xx 状态码。此时需要额外健康检查处理。使用 `proxy_next_upstream` 遇到指定报错信息，第二次再出现这个报错就会把请求交给下一个节点。
+
+~~~nginx
+upstream blog {
+    server 172.16.1.7;
+    server 172.16.1.8;
+}
+ 
+server {
+    listen 80;
+    server_name linux.wp.com;
+ 
+    location / {
+        proxy_pass http://blog;
+        include proxy_params; 
+        #可以配置在这里，当然也可以写到include指定的文件里
+        proxy_next_upstream error timeout http_500 http_502 http_503 http_504 http_403 http_404;
+    }
+}
+~~~
+
+
+
+## 负载均衡算法
+
+轮巡、加权轮训、ip_hash、url_hash、最少连接调度least_conn、公平调度fair
