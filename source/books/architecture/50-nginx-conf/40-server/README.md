@@ -75,6 +75,104 @@ server {
 
 
 
+## 字段 location
+
+指令 `location` 在 `server` 块中用于根据请求的 URI（即域名后的路径部分）来匹配和处理请求。简单来说，它的作用就是：**当客户端请求的 URI 匹配某个特定路径时，告诉 Nginx 应该去哪里找文件、执行什么操作，或者将请求转发给哪里**。
+
+~~~nginx
+location [匹配规则] [匹配的URI] {
+    # 处理指令，例如：
+    root   /path/to/files;
+    index  index.html index.htm;
+    proxy_pass http://backend_servers;
+    # ... 其他指令
+}
+~~~
+
+#### 前缀匹配之精准匹配（`=`）
+
+只匹配完全相等的 URI。优先级最高。匹配的 URI 必须以 `/` 开头。
+
+~~~nginx
+location = /login {
+    # 只有当请求的 URI 严格等于 “/login” 时，才会进入这个区块
+    # 例如：https://example.com/login
+    # 不会匹配：/login/ 或 /login.html
+    proxy_pass http://auth_server;
+}
+~~~
+
+#### 前缀匹配之最佳匹配（`^~`）
+
+如果 URI 匹配这个长前缀，Nginx 会停止搜索其他正则表达式 `location`，直接使用此配置。其优先级高于正则匹配。匹配的 URI 必须以 `/` 开头。
+
+~~~nginx
+location ^~ /images/ {
+    # 对于以 /images/ 开头的 URI，即使后面有能匹配的正则 location，也优先使用这个
+    root /special/storage;
+}
+~~~
+
+#### 前缀匹配之普通匹配
+
+匹配以指定字符串开头的 URI。这是最常用的匹配方式。匹配的 URI 必须以 `/` 开头。
+
+~~~nginx
+location /static/ {
+    # 匹配任何以 “/static/” 开头的 URI
+    # 例如：/static/css/style.css, /static/js/app.js, /static/images/logo.png
+    root /data/www;
+    # 最终文件路径为：/data/www/static/css/style.css
+}
+~~~
+
+>**注意**： 最佳匹配和普通匹配的 匹配 URI 不能一样，nginx 启动会报错说重复。
+
+
+
+#### 正则表达式匹配（`~` 和 `~*`）
+
+使用强大的正则表达式进行复杂、灵活的匹配。优先级低于精确匹配，但高于普通前缀匹配。
+
+- `~` 区分大小写的正则匹配。
+- `~*` 不区分大小写的正则匹配。
+
+~~~nginx
+location ~ \.(gif|jpg|png|js|css)$ {
+    # 匹配所有以 .gif, .jpg, .png, .js, .css 结尾的请求
+    root /data/cache;
+    expires 30d; # 设置缓存过期时间
+}
+
+location ~* \.php$ {
+    # 不区分大小写地匹配所有 .php 结尾的请求（如 .PHP, .Php）
+    # 例如：/index.php, /api/User.PHP
+    proxy_pass http://php_backend;
+}
+~~~
+
+#### 匹配过程和逻辑
+
+匹配原则为：先是用相对明确的前缀匹配，再使用相对模糊的正则匹配。
+
+匹配过程：
+
+1. 第一阶段，使用精确匹配（`=`），如果 URI 和匹配 URI 完全一样，则匹配成功就立即使用。
+2. 第二阶段，使用前缀匹配的最佳匹配（`^~`）和普通匹配（无修饰符）来比对 URI，哪个匹配的更精确就使用哪个。
+    - 如果最佳匹配（`^~`）更精确，则立即使用，不再关心后面是否有正则匹配模式。
+    - 如果普通匹配（无修饰符）更精确，则还要再使用正则表达式比对 URI。
+3. 第三阶段，使用正则表达式匹配 URI，按照配置时的顺序从上往下依次比对请求 URI，第一个匹配成功的正则表达式会被使用。
+4. 第四阶段，所有正则表达式都匹配失败，会选择满足匹配要求的普通匹配。
+
+#### 注意：
+
+- 正则表达式匹配的定义有先后顺序要求。
+- 其他类型的匹配模式和正则表达式相比，没有配置时先后顺序的要求。
+
+
+
+
+
 ## 字段 root 和 index
 
 这俩字段可以放在 `server` 块内，作为整个 server 的全局默认配置。但更**推荐在 `location` 内使用**，`location` 内部使用可以覆盖全局配置。
@@ -90,9 +188,10 @@ server {
 
 配置含义如下：
 
-- 如果请求是 `/css/style.css`，那么资源查找的完整路径为：`/var/share/nginx/html/css/style.css`
-- 如果没有指定具体的文件，请求以 `/` 结尾。那么会尝试按照 `index` 配置的文件顺序查找。
-  - 第一个查找的资源完整路径为：`/var/share/nginx/html/index.html`
+- 如果 URI 是 `/css/style.css`，则查找的完整路径为：`/var/share/nginx/html/css/style.css`
+- 如果 URI 是 `/`，则第一个查找的完整路径为：`/var/share/nginx/html/index.html`
+
+
 
 **配置在 location 内**
 
@@ -105,56 +204,248 @@ location /wiki {
 
 配置含义如下：
 
-- 如果请求是 `/wiki/1.txt`，那么资源查找的完整路径为：`/var/share/nginx/html/wiki/1.txt`
-- 如果请求是  `/wiki/` ，第一个查找的资源完整路径为：`/var/share/nginx/html/wiki/index.html`
+- 如果 URI 是 `/wiki/1.txt`，则查找的完整路径为：`/var/share/nginx/html/wiki/1.txt`
+- 如果 URI 是  `/wiki/` ，第一个查找的资源完整路径为：`/var/share/nginx/html/wiki/index.html`
 
 
 
 #### 总结
 
-`root` 的含义是把 URI 拼接到后面，`index` 的含义是指定首页文件列表。
+- **`root`**：会将请求的 URI 附加到指定的目录后面，形成最终的文件路径。
+- `index` 的含义是，没有指定资源文件时，默认使用的资源文件，可以配置有多个，依次查找。
 
 
 
+## 字段 alias
 
-
-
-
-### 5. 配置 http 七层反向代理
+指令 `alias` 指定的路径是一个**精确的替换**。Nginx 会将 `location` 中匹配到的部分替换为 `alias` 指定的路径，URI 中剩下的部分直接附加到替换后的路径后。**注意**：`alias` 指令后面必须用 `/` 结尾；`alias` 只能在 `location` 块内使用。
 
 ~~~nginx
-http {
-   upstream backend {
-       server backend1.example.com;
-       server backend2.example.com;
-       keepalive 32;
-   }
-  server {
-    location /api {
-      proxy_pass http://backend
+server {
+    location /images/ {
+        alias /data/storage/photos/;
     }
-  }
+}
+~~~
+
+解释如下，请求的 URI 是：`/images/cat.jpg`，则最终服务器文件路径为：`/data/storage/photos/cat.jpg`
+
+### 对比 `root` 和 `alias`
+
+| 特性           | `root`                              | `alias`                             |
+| :------------- | :---------------------------------- | :---------------------------------- |
+| **工作方式**   | **拼接** URI 到指定路径后           | **替换**匹配部分为指定路径          |
+| **路径结尾**   | 可带或不带 `/`                      | **必须**以 `/` 结尾                 |
+| **常见用途**   | 定义静态资源根目录                  | 将URL映射到不同目录结构             |
+| **Location块** | 可用于 `http`, `server`, `location` | 通常只在 `location` 中              |
+| **最终路径**   | `root路径` + `请求URI`              | `alias路径` + `请求URI去除匹配部分` |
+
+### 使用 alias 的场景
+
+假设你的日志文件在 `/var/log/nginx/`，但你不想让用户通过 `/var/log/nginx/access.log` 这样的路径访问，而是通过 `/logs/access.log`。使用 `alias`。
+
+~~~nginx
+location /logs/ {
+    alias /var/log/nginx/;
+}
+~~~
+
+- **请求：** `https://example.com/logs/access.log`
+- **最终路径：** `/var/log/nginx/access.log` ✅
+
+
+
+## 字段 return
+
+`return` 指令用于**立即停止处理当前请求**，并直接向客户端返回一个指定的 HTTP 状态码、可选的重定向 URL 或一段文本内容。`location` 块中 `return` 后面的指令不再执行。
+
+~~~nginx
+server {
+    # 将整个旧域名重定向到新域名
+    server_name old-site.com;
+    return 301 https://new-site.com$request_uri;
+    # $request_uri 变量会保留原始请求的路径和参数
+}
+
+location /old-page.html {
+    # 将特定旧页面重定向到新页面
+    return 301 https://$host/new-page.html;
+}
+
+location /go-to-google {
+    return https://www.google.com;
+}
+# 等价于 return 302 https://www.google.com;
+
+location /admin {
+    # 直接返回403错误，不解释原因
+    return 403;
+}
+
+location /secret.txt {
+    # 返回403并附带一条文本消息
+    return 403 "You are not allowed to access this file!";
 }
 ~~~
 
 
 
-### 6. http 透传 ip
+
+
+## 配置 http 七层反向代理
+
+Nginx 有三条常用的代理命令，均属于反向代理。
+
+- `proxy_pass`，代理http协议
+- `fastcgi_pass`，代理fastcgi协议（php php-fpm 服务）
+- `uwsgi_pass`，代理uwsgi协议（python uwsgi 服务）
+
+代理和负载均衡是两回事，代理指的就是把请求转发给其他人，转发的目标可以是一台机器，也可以是多台机器。如果是多台机器，那需要使用 `upstream` 把多台机器放在一个组内。
+
+~~~nginx
+upstream webs {
+    192.168.10.101:8000;
+    192.168.10.102:8000;
+    192.168.10.103:8000;
+}
+
+server {
+    listen 80;
+    
+    # 代理一台机器
+    location / {
+        proxy_pass http://192.168.10.111;
+    }
+  
+    # 代理一组机器
+    location /api {
+        proxy_pass http://webs;
+    }
+}
+~~~
+
+>代理的类型
+>
+>正向代理是客户端的代理，服务器不知道真正的客户端是谁
+>反向代理是服务器的代理，客户端不知道真正的服务器是谁
+>
+>透明代理是客户端的代理，必须和客户端在一个网络内，且客户端无感知。一般用于用户的上网行为分析。
+
+
+
+
+
+## http 透传 ip
+
+~~~nginx
+location / {
+    proxy_pass http://backend_server;
+
+    # 设置真实/原始客户端的 IP 地址
+    proxy_set_header X-Real-IP $remote_addr;  
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; 
+    proxy_set_header Host $host;
+}
+~~~
+
+
+
+## 代理优化参数
+
+优化参数可以单独写入一个文件 proxy_params 中通过 `include` 导入，当然你也可以直接与 `proxy_pass` 并列放置。
 
 ~~~nginx
 server {
     listen 80;
-    server_name example.com;
+    location / {
+        proxy_pass xxxx;
+        include proxy_params;
+    }
+}
+~~~
+
+代理配置文件 `/etc/nginx/proxy_params `
+
+~~~nginx
+# 转发原始请求的 host 头部
+proxy_set_header X-Real-IP $remote_addr; 
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; 
+proxy_set_header Host $host;
+
+# 代理到后端的TCP连接、响应、返回等超时时间
+proxy_connect_timeout 10s; # nginx代理与后端服务器连接超时时间(代理连接超时)
+proxy_read_timeout 10s; # nginx代理等待后端服务器的响应时间
+proxy_send_timeout 10s; #后端服务器数据回传给nginx代理超时时间
+
+# proxy_buffer代理缓冲区
+# nignx会把后端返回的内容先放到缓冲区当中，
+# 然后再返回给客户端，边收边传, 不是全部接收完再传给客户端
+proxy_buffering on;
+proxy_buffer_size 8k; # 设置nginx代理保存用户头信息的缓冲区大小
+proxy_buffers 8 8k;   #proxy_buffers 缓冲区
+~~~
+
+
+
+
+
+## 动静分离
+
+把动态请求和静态请求分开。静态资源使用 nginx 处理，动态接口交给 web 服务端处理。可以基于请求分离，也可以基于扩展名分离。
+
+~~~nginx
+upstream backends {
+    server 192.168.43.100:8080;
+    server 192.168.43.101:8080;
+    server 192.168.43.102:8080;
+}
+server {
+    listen 8888;
+    server_name localhost;
+  
+    location /api {
+        proxy_pass http://backends; 
+    }
+  
+    location ~ \.(jpg|png|gif|css|js)$ {
+        root /var/share/nginx/html/static;
+    }
+}
+~~~
+
+## 资源分离
+
+使用 `if` 判断，请求不同资源
+
+~~~nginx
+upstream android {
+    server 10.0.0.7;
+}
+upstream iphone {
+    server 10.0.0.8;
+}
+upstream pc {
+    server 10.0.0.9;
+}
+ 
+server {
+    listen 80;
+    server_name linux.sj.com;
  
     location / {
-        proxy_pass http://backend_server;
-    
-        # 设置真实/原始客户端的 IP 地址
-        proxy_set_header X-Real-IP $remote_addr;  
-        # 追加原始客户端的 IP 地址到 X-Forwarded-For 头信息中。
-        # 在后端服务器中就可以通过读取 X-Forwarded-For 头信息来获取原始客户端的 IP 地址。
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; 
-        proxy_set_header Host $host;
+        if ($http_user_agent ~* "Android") {
+            proxy_pass http://android;    
+        }
+        if ($http_user_agent ~* "iPhone") { 
+            proxy_pass http://iphone;  
+        }
+        if ($http_user_agent ~* "WOW64") {
+            return 403;     
+        }
+       
+        # 默认代理到 PC
+        proxy_pass http://pc;            
+        include proxy_params;
     }
 }
 ~~~
@@ -175,7 +466,7 @@ Linux 内核中这两个最大长度都是可以设置的，默认都是 128。
 
 
 
-### nginx 设置连接池大小
+## nginx 设置连接池大小
 
 nginx 配置中 `backlog` 用来配置 SYN 队列的大小和 ACCEPT 队列的大小，它俩默认值是 511
 
@@ -187,8 +478,6 @@ server {
 
 >注意：`backlog` 设置的值要配合内核中 `somaxconn` 和 `tcp_max_syn_backlog`。在提高内核值的基础上，再提高nginx 的配置，这样才能起到提高并发能力的效果。
 
-
-
 查看队列是否溢出的命令：
 
 - 查看全连接队列的溢出情况：`netstat -s | grep "overflowed"`
@@ -196,7 +485,7 @@ server {
 
 
 
-### nginx 中 worker 的工作模式
+## nginx 中 worker 的工作模式
 
 Nignx 里面的 master 进程负责管理多个 worker 进程，worker 进程负责处理请求任务。worker 进程从全连接队列中取出请求然后处理请求。worker 使用全连接队列的方式分为两种情况（工作模式）。
 
@@ -218,7 +507,7 @@ Nignx 里面的 master 进程负责管理多个 worker 进程，worker 进程负
 
 
 
-#### nginx 开启 reuseport 
+## nginx 开启 reuseport 
 
 nginx 使用 `reuseport` 启用复用端口，开启多个 worker 独享一个全连接队列模式。
 
@@ -256,13 +545,13 @@ tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      
 
 
 
-#### 启动 worker 多线程模式
+## 启动 worker 多线程模式
 
 一个 worker 进程内只有一个线程，这意味着每个工作进程在同一时间只有一个在处理客户端请求。尽管每个工作进程是单线程的，但 nginx 通过事件驱动和非阻塞I/O的方式（epoll 模型）能够处理大量并发请求，并且单线程的模式避免了上下文切换的开销，实现高性能和高吞吐量。这种设计在处理静态内容和反向代理等场景下表现出色。
 
 单线程的 worker 可能因为耗时任务阻塞全连接池，此时在 worker 进程内使用多线程模式，可以让 CPU 分配相对均匀、提高 CPU 利用率。
 
-**配置 worker 进程内开启多线程**
+**配置 worker 进程开启多线程**
 
 ~~~nginx
 # 定义一个名为‘my_pool’的线程池，3个线程，最大队列1024
@@ -286,7 +575,7 @@ http {
 
 
 
-#### 启用线程池的前提
+**启用线程池的前提**
 
 **确保 Nginx 编译时包含了线程池支持**。通过以下命令来检查，如果输出 `with-threads`，则说明支持线程池。
 
@@ -294,276 +583,3 @@ http {
 nginx -V 2>&1 | grep -o with-threads
 ```
 
-
-
-
-
-## 虚拟主机
-
-一个 nginx 服务可以当多个 web 使用。比如配置多个服务都监听相同的端口号，根据域名来区分不同的服务。如果客户端继续使用 IP 访问，可以选择一个默认服务，配置 `listen 8080 default` 充当默认服务响应客户端。还可以给 server_name 配置别名 `server_name somename alias another.alias;`。
-
-~~~nginx
-server {
-    listen 8080;
-    server_name www.xxx.com;
-    root /usr/share/nginx/html/www;
-}
-
-server {
-    listen 8080 default;
-    server_name bbs.xxx.com;
-    root /usr/share/nginx/html/bbs;
-}
-~~~
-
-
-
-## location 匹配规则
-
-Nginx 配置文件中的 `server` 模块下的子模块`location` 包含了一套与请求 URI 进行匹配的规则，在 `server` 中可以配置多个 `location` ，`location` 只会和 URI 匹配，`?` 后面的查询参数不参加匹配。
-
->参考：
->
->- 官方：https://nginx.org/en/docs/http/ngx_http_core_module.html#location
->- 中文翻译：https://tengine.taobao.org/nginx_docs/cn/docs/http/ngx_http_core_module.html#location
-
-location 有两类匹配规则：前缀匹配、正则匹配
-
-### 前缀匹配
-
-#### 1. 使用 `=`
-
-~~~bash
-localtion = /static/img/logo.jpg
-
-# 使用 = 号，后面都是普通字符且必须以左斜杠开头
-# 只有当请求的 URI 完全一字不落地等于 /static/img/logo.jpg  时，这个location才会被匹配。
-~~~
-
-#### 2. 使用 `^~` 
-
-~~~bash
-location ^~ /static/img
-
-# 使用 ^~ 装饰符，后面都是普通字符且必须以左斜杠开头
-# 当请求的 URI 以 /static/img 开头时，这个location以非正则表达式的方式被匹配。
-~~~
-
-#### 3. 不加任何修饰符的前缀匹配
-
-~~~bash
-location /static/img/logo
-# 当请求的URI以 /static/img/logo 开头时，这个location会被匹配。
-# 一样的，左斜杠开头是必须的。
-~~~
-
-
-
-### 正则匹配
-
-正则匹配就简单了，分两种
-
-~~~bash
-location  ~   路径部分   # 大小写敏感
-location  ~*  路径部分   # 大小写不敏感
-
-# 路径部分可以加入正则表达式
-# 对于请求的uri路径，会按照正则的规则匹配，并非一定要从左斜杠作为开头/前缀
-~~~
-
-
-
-### 匹配流程
-
-总体原则：先使用相对明确的前缀匹配，再使用相对模糊的正则匹配。
-
-**第一阶段**：
-- 先使用 `=` 的完全匹配。如果匹配成功，则停止不再继续匹配。
-
-**第二阶段**：
-- 进行前缀匹配中的常规字符串匹配（包含带修饰符的 `^~` 与不带修饰符的两大类）。这两类没有优先级之分，谁匹配规则写的越精确（匹配规则写的越长）就使用谁。它俩的区别在于：如果被使用的 location 里带有 `^~` 修饰符，那本次搜索就此结束，不会再有后续；如果这个 location 里不带有任何修饰符，那本次搜索不会结束，还会进行第三阶段的正则匹配。
-
-**第三阶段**：
-- 正则表达式匹配按照在配置文件中自上而下的先后顺序依次检查正则匹配的规则，但凡匹配成功一个，则搜索停止。
-- 如果正则匹配失败，要分两种情况看。第一种：前面第二阶段匹配失败进入的第三阶段，那最终就是匹配失败。第二种：如果在第二阶段时，匹配成功并记录下了一个路径部分最长最精准的 location，只不过该location 属于没有带任何修饰符的类型，才进入了第三阶段的正则匹配的。现在所有正则匹配都失效了，那也只能用该 location了，因为也只有它是最精准的了。
-
-
-
-## server之return 指令
-
-`return` 指令的作用是停止处理请求，直接返回响应内容。执行 return 指令后，location 中的后续指令不会被执行。
-
-~~~nginx
-# 用法
-return code [text];
-return code URL;		# 常用语重定向
-return URL          # 需要 http 或 https 开头的 URL
-
-
-# 示例
-location ^~ /return00 {
-    return 403;
-}
-
-location ^~ /return01 {
-    default_type text/html;  # 必须告诉浏览器return内容的类型
-    return 200 'request success';
-}
-
-location ^~ /return02 {
-    return 302 /hello;
-}
-
-location ^~ /return03 {
-    return http://kaxonliu.top;   # 默认响应状态码是 302
-}
-
-location ^~ /return05 {
-    default_type application/octet-stream;   # 下载文件
-    return 200 'egon say hello';
-}
-~~~
-
-
-
->扩展：**301 和 302 重定向**
->
->301 永久重定向。第一个请求由服务端处理，后面就不再请求服务端（浏览器缓存记录的结果）。
->
->302 临时重定向。每次请求都打向服务端，走一遍重定向流程。
-
-
-
-## root 指令和 alias 指令
-
-相同点：都是用来指定资源的查找路径
-
-不同点：
-
-- root 指令是为当前location 定义了访问的根目录。完整的资源路径是: root + 请求 uri
-
-比如用户访问：http://192.168.10.112:8080/books/cat/xxx/yyy
-
-root配置如下，则完整资源路径为：/var/www/html/books/cat/xxx/yyy
-
-~~~nginx
-location /books/cat {
-    root /var/www/html;
-}
-~~~
-
-- alias 指令也规定了一个路径，但是不是根目录。alias 会把自己的路径替换 location 规则匹配的路径，得到一个完整的资源路径。
-
-比如用户访问：http://192.168.10.112:8080/books/cat/xxx/yyy
-
-alias 配置如下，则完整资源路径为：/a/b/c/xxx/yyy
-
-~~~nginx
-location /books/cat {
-    alias /a/b/c;
-}
-~~~
-
-
-
-## index 指令
-
-没有指定资源文件时，默认使用的资源文件，可以配置有多个，依次查找
-
-~~~nginx
-location / {
-    index index.html 1.txt 2.txt;
-}
-~~~
-
-
-
-## 代理的类型
-
-正向代理
-
-- 代理客户端。用户需要设置
-
-反向代理
-
-- 代理服务端
-
-透明代理
-
-- 代理客户端的，用户无感知（即不需要设置），需要和客户端在一个局域网。用做用户上网行为分析。
-
-
-
-## upstream 负载均衡配置健康检查
-
-upstream 中的配置选项
-
-~~~bash
-down 节点下线
-backup 备用节点，平是不工作，其他节点全部挂掉后才开始工作
-max_fails 允许请求失败的次数
-fail_timeout 经过 max_fails失败后，该节点被暂停代理的时间
-max_conn 限制最大的接收连接受
-
-
-#上游服务列表
-upstream test_balance {
-    server 192.168.43.100:8080 max_fails=3 fail_timeout=5s;
-    server 192.168.43.101:8080 max_fails=3 fail_timeout=5s;
-    server 192.168.43.102:8080 backup;
-    server 192.168.43.103:8080 down;
-}
-
-server {
-    listen 8888;
-    server_name localhost;
-    location ^~ /test/ {
-        proxy_pass http://test_balance;
-    }
-}
-~~~
-
-
-
-### 慢启动方案
-
-付费版才能使用慢启动参数 。开源版本可以降低轮训权重的方式减少启动时的流量压力。
-
-~~~nginx
-upstream backend {
-    server backend1.example.com slow_start=30s;
-    server backend2.example.com;
-    server backend3.example.com;
-}
-~~~
-
-
-
-### 健康检查
-
-参数 max_fails=3 fail_timeout=5s; 只能检查服务节点是否挂掉。但是后端代码内部报错返回 5xx 状态码。此时需要额外健康检查处理。使用 `proxy_next_upstream` 遇到指定报错信息，第二次再出现这个报错就会把请求交给下一个节点。
-
-~~~nginx
-upstream blog {
-    server 172.16.1.7;
-    server 172.16.1.8;
-}
- 
-server {
-    listen 80;
-    server_name linux.wp.com;
- 
-    location / {
-        proxy_pass http://blog;
-        include proxy_params; 
-        #可以配置在这里，当然也可以写到include指定的文件里
-        proxy_next_upstream error timeout http_500 http_502 http_503 http_504 http_403 http_404;
-    }
-}
-~~~
-
-
-
-## 负载均衡算法
-
-轮巡、加权轮训、ip_hash、url_hash、最少连接调度least_conn、公平调度fair
