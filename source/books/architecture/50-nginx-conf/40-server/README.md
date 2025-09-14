@@ -290,6 +290,94 @@ location /secret.txt {
 
 
 
+## 字段 try_files
+
+`try_files` 指令用于按顺序检查文件或路径是否存在，并使用找到的第一个文件或路径进行请求处理。如果所有指定的选项都未找到，它将执行最后一个参数作为 fallback（后备方案）。
+
+#### 示例1：静态网站优化
+
+访问域名时 linux.try.com/sdsdasd，返回的结果是 index.html。因为 `sdsdasd` 是当前请求路径，则 `$uri` 不存在，继续查找下一个 `$uri/` 也不存在。那就使用最后一个，返回首页。
+
+~~~nginx
+server {
+    listen 80;
+    server_name linux.try.com;
+  
+    location / {
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+}
+~~~
+
+
+
+#### 示例2：与命名 location 结合使用
+
+最后一个参数经常是一个**命名 location**（以 `@` 开头），用于更复杂的后备逻辑。
+
+~~~nginx
+location / {
+    try_files $uri $uri/ @backend;
+}
+
+# 一个命名的location，只能被内部重定向使用
+location @backend {
+    # 一些额外的代理设置
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    # 将请求代理到应用服务器
+    proxy_pass http://backend_app;
+}
+~~~
+
+
+
+## 字段 error_page
+
+当服务器出现特定错误时，向客户端返回自定义的错误页面，而不是默认的、不友好的 Nginx 默认错误页。
+
+```nginx
+server {
+    # 当发生 404 (Not Found) 错误时，内部重定向到 /404.html 这个 URI
+    error_page 404 /404.html;
+    # 定义一个 location 块来处理 /404.html 这个请求
+    location = /404.html {
+        # 注意：这个 location 块内部是空的，这意味着它将使用最外层的配置（如 root, index 等）
+        # Nginx 会在 root 指令指定的目录下寻找 404.html 文件并返回
+    }
+
+    # 当发生 500 (Internal Server Error), 502 (Bad Gateway), 503 (Service Unavailable), 504 (Gateway Timeout) 错误时，
+    # 内部重定向到 /50x.html 这个 URI
+    error_page 500 502 503 504 /50x.html;
+    # 定义一个 location 块来处理 /50x.html 这个请求
+    location = /50x.html {
+        # 同样，这个块也是空的，使用外层配置寻找 50x.html 文件
+    }
+}
+```
+
+#### 补充使用指令 internal
+
+这是非常重要的优化。它标记这个 location 为“内部的”，意味着只能由 Nginx 的内部重定向（如 `error_page`、`index`、`try_files`）访问。
+
+- **没有它**：用户直接访问 `https://yourdomain.com/404.html` 会成功返回页面，并且 HTTP 状态码是 `200`，这不符合逻辑。
+- **有它**：用户直接访问 `https://yourdomain.com/404.html` 会得到真实的 `404` 错误，这才是正确的行为。
+
+~~~nginx
+server {
+    error_page 404 /404.html;
+    location = /404.html {
+        internal;
+    }
+}
+~~~
+
+
+
+
+
+
+
 
 
 ## 配置 http 七层反向代理
