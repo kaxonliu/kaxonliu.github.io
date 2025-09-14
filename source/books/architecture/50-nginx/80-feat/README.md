@@ -458,6 +458,39 @@ server {
 
 
 
+## 配置跨域请求
+
+域由三部分组成：协议、域名、端口号。三个都一样，两个 URL 才被认为是一个域或者说是 "同源"。 浏览器有一个同源策略，这个策略发现请求的 URL 和当前站点不同源，会阻止响应不会阻止请求。如果响应中告知浏览器允许访问，那么浏览器就会允许响应。
+
+~~~nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+    
+    location / {
+        # 基本CORS设置
+        add_header 'Access-Control-Allow-Origin' 'https://yourfrontend.com';
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE';
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+        add_header 'Access-Control-Allow-Credentials' 'true';
+        
+        # 处理预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Max-Age' 1728000;
+            add_header 'Content-Type' 'text/plain; charset=utf-8';
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+        
+        proxy_pass http://django_app:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+~~~
+
+
+
 
 
 ## nginx 优化总结
