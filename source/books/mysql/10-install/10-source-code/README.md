@@ -213,18 +213,19 @@ netstat -lntp | grep 3306
 mysql -u root -p 
 
 # 方式1
-MySQL > SET PASSWORD=PASSWORD('123456');
-Query OK, 0 rows affected (0.00 sec)
- 
+SET PASSWORD=PASSWORD('123456');
+
+# 在旧版本的 MySQL（主要是 5.7 及之前）中，
+# 这是一种标准的修改当前用户密码的方法。 
+# 但在新版本（8.0+）中，这条命令已经失效并会报错。
+
+
 # 方式2
-MySQL > grant all privileges on *.* to root@'%' identified by '123';
-Query OK, 0 rows affected (0.00 sec)
+grant all privileges on *.* to root@'%' identified by '123';
 
 
-mysql> flush privileges;
-Query OK, 0 rows affected (0.00 sec)
- 
-注意：两种重置密码方式有区别。
+# 刷新
+flush privileges;
 ~~~
 
 
