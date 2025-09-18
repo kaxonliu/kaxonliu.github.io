@@ -2,6 +2,8 @@
 
 MySQL 权限管理是数据库安全和管理中的核心部分。它主要涉及创建用户、授予权限、撤销权限和删除用户等操作。
 
+注意：本笔记指令全部在 mysql8上适用，在5.7以下版本不一定适用。
+
 
 
 ## 核心概念
@@ -134,7 +136,7 @@ grant select (id,age),update(age) on db1.t3 to 'lili'@'localhost';
 
 #### 权限超级管理员权限
 
-`all` 可以代表除了 `grant` 之外的所有权限，配合使用 `with grant options`  表示授权管理员权限。
+`all` 可以代表除了 `grant` 之外的所有权限，配合使用 `with grant options`  表示授权超级管理员权限。
 
 ~~~sql
 grant all on *.* to 'liuxu'@'localhost' with grant options;
@@ -170,14 +172,70 @@ SHOW GRANTS FOR 'liuxu'@'localhost';
 
 #### 扩展权限
 
-max_queries_per_hour：一个用户每小时可发出的查询数量
-max_updates_per_hour：一个用户每小时可发出的更新数量
-max_connections_per_hour：一个用户每小时可连接到服务器的次数
-max_user_connections：允许同时连接数量
+`GRANT` 语句在 MySQL 8 中不再支持直接包含资源限制选项，这些选项现在需要通过 `CREATE USER` 或 `ALTER USER` 语句来设置。
 
 ~~~sql
--- liuxu 在一个小时内剋发出一次查询请求
-grant all on *.* to 'liuxu'@'%'  with max_queries_per_hour 1;
+ALTER USER 'username'@'hostname' WITH
+    MAX_QUERIES_PER_HOUR count
+    MAX_UPDATES_PER_HOUR count
+    MAX_CONNECTIONS_PER_HOUR count
+    MAX_USER_CONNECTIONS count;
+    
+-- 刷新权限
 FLUSH PRIVILEGES;
 ~~~
+
+示例如下
+
+~~~sql
+-- liuxu 在一个小时内只能发出10次查询请求
+ALTER USER 'liuxu'@'localhost' WITH MAX_QUERIES_PER_HOUR 10;
+FLUSH PRIVILEGES;
+~~~
+
+
+
+## 破解密码
+
+推荐使用启动时跳过授权表的方式。
+
+1. 修改配置文件，按照跳过授权表的方式运行 mysqld，同时跳过网络。
+
+~~~ini
+# /etc/my.cnf 文件中新增如下内容
+[mysqld]
+skip-grant-tables
+skip-networking
+~~~
+
+2. 重启 mysqld 服务
+~~~bash
+systemctl restart mysqld
+~~~
+3. 免密登陆
+~~~bash
+mysql
+~~~
+4. 设置 root 账号新密码
+~~~sql
+FLUSH PRIVILEGES;
+ALTER USER 'root'@'localhost' IDENTIFIED BY '你的新密码';
+FLUSH PRIVILEGES;
+exit;
+
+
+-- 注意在跳过授权表的模式下不能使用如下命令修改密码 
+-- alter user root@localhost identified by "你的新密码";
+~~~
+5. 移除配置文件跳过授权表的配置
+6. 重新 mysqld
+~~~bash
+systemctl restart mysqld
+~~~
+7. 使用新密码登陆
+~~~bash
+mysql -u root -p
+~~~
+
+
 
