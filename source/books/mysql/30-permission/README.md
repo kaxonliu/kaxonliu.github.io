@@ -2,7 +2,7 @@
 
 MySQL 权限管理是数据库安全和管理中的核心部分。它主要涉及创建用户、授予权限、撤销权限和删除用户等操作。
 
-注意：本笔记指令全部在 mysql8上适用，在5.7以下版本不一定适用。
+注意：本笔记指令全部在 mysql8上适用，在5.7及以下版本不一定适用。
 
 
 
@@ -222,10 +222,6 @@ FLUSH PRIVILEGES;
 ALTER USER 'root'@'localhost' IDENTIFIED BY '你的新密码';
 FLUSH PRIVILEGES;
 exit;
-
-
--- 注意在跳过授权表的模式下不能使用如下命令修改密码 
--- alter user root@localhost identified by "你的新密码";
 ~~~
 5. 移除配置文件跳过授权表的配置
 6. 重新 mysqld
