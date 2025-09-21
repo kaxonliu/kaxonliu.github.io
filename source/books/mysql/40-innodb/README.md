@@ -164,8 +164,8 @@ InnoDB将数据的每次写优化为了批量写，这便以降低磁盘IO的次
 #### 1. 准备旧数据 (InnoDB引擎层)
 
 1. **加载数据页**：如果需要修改的数据页不在内存（Buffer Pool）中，则从表空间文件（`.ibd`）中加载它。
-2. **记录Undo Log**：在修改数据页**之前**，InnoDB会先将这行数据的**旧版本**（修改前的值）拷贝到**Undo Log**中。
-3. **修改数据，产生脏页**：现在可以安全地在Buffer Pool中修改数据了。这个被修改过的数据页被称为 **“脏页”（Dirty Page）**。
+2. **记录Undo Log**：在修改数据页前，InnoDB 会先将这行数据的旧值拷贝到Undo Log 中。
+3. **修改数据，产生脏页**：现在可以安全地在 Buffer Pool 中修改数据了。这个被修改过的数据页被称为脏页。
 
 > 补充：
 >
@@ -177,7 +177,7 @@ InnoDB将数据的每次写优化为了批量写，这便以降低磁盘IO的次
 #### 2. 两阶段提交 - Prepare (InnoDB引擎层)
 
 1. **写Redo Log (Prepare)**：为了即使崩溃也能恢复这个修改，InnoDB 生成一条**Redo Log**记录。这条记录内容是“在某个数据页的某个位置做了什么修改”（物理逻辑日志）。这条日志被标记为 **`PREPARE`** 状态，并首先写入内存中的 **Log Buffer**。
-2. **Redo Log刷盘**：根据配置的`innodb_flush_log_at_trx_commit`策略（通常为1，即每次提交都刷盘），将 Log Buffer 中的 Redo Log **强制刷盘（`fsync`）** 到硬盘的重做日志文件（`ib_logfile0`）中。
+2. **Redo Log刷盘**：根据配置的 `innodb_flush_log_at_trx_commit `策略（通常为1，即每次提交都刷盘），将 Log Buffer 中的 Redo Log **强制刷盘（`fsync`）** 到硬盘的重做日志文件（`ib_logfile0`）中。
 
 > **此时**：磁盘上已经有一个永久的、物理的记录，指明了如何重做这个修改，但这个修改还被标记为“准备中”，尚未提交。
 
@@ -186,7 +186,7 @@ InnoDB将数据的每次写优化为了批量写，这便以降低磁盘IO的次
 #### 3. 写入Binlog (MySQL Server层)
 
 1. **写Binlog**：MySQL 的 Server 层生成对应的 **Binlog**。Binlog 记录的是 SQL 语句的原始逻辑（例如格式为`ROW`时，会记录行的变化前和变化后的值）。
-2. **Binlog刷盘**：Binlog首先写入线程自己的**Binlog Cache**，然后在事务提交时，被**强制刷盘（`fsync`）** 到硬盘的二进制日志文件（`binlog.000001`）中。这一步由`sync_binlog`参数控制，通常也设为1以保证安全。
+2. **Binlog刷盘**：Binlog 首先写入线程自己的**Binlog Cache**，然后在事务提交时，被**强制刷盘（`fsync`）** 到硬盘的二进制日志文件（`binlog.000001`）中。这一步由 `sync_binlog` 参数控制，通常也设为1以保证安全。
 
 > **这是最关键的一步**：Binlog的写入和刷盘是**两阶段提交（2PC）** 的“提交点”。一旦Binlog成功落盘，就意味着这个事务**一定可以被传播**（到从库）和**恢复**。
 
@@ -194,15 +194,15 @@ InnoDB将数据的每次写优化为了批量写，这便以降低磁盘IO的次
 
 #### 4. 两阶段提交 - Commit (InnoDB引擎层)，2PC
 
-1. **写Redo Log (Commit)**：在确认Binlog已成功写入后，InnoDB会再写一条Redo Log到Log Buffer，将其状态标记为 **`COMMIT`**。
-2. **（可选）Redo Log刷盘**：通常，包含`COMMIT`标记的Log Buffer会很快被刷盘。在某些配置下，为了提升性能，可能会省略这一步的立即刷盘，因为即使此时崩溃，在崩溃恢复时只要发现Binlog是完整的，事务依然会被提交。
+1. **写Redo Log (Commit)**：在确认Binlog已成功写入后，InnoDB 会再写一条 Redo Log 到 Log Buffer，将其状态标记为 **`COMMIT`**。
+2. **（可选）Redo Log刷盘**：通常，包含`COMMIT`标记的 Log Buffer 会很快被刷盘。在某些配置下，为了提升性能，可能会省略这一步的立即刷盘，因为即使此时崩溃，在崩溃恢复时只要发现Binlog是完整的，事务依然会被提交。
 3. **事务完成**：完成以上步骤后，事务正式提交完成，客户端收到成功消息。
 
 <br>
 
 #### 异步步骤: 刷脏页
 
-1. **异步刷盘**：此后台的某个时间点（由InnoDB的各种机制触发），后台线程会缓慢地将Buffer Pool中的**脏页**写入到表空间数据文件（`.ibd`文件）中。一旦脏页被写入磁盘，对应的Redo Log 记录就失去了作用，其占用的空间可以被覆盖重用。
+1. **异步刷盘**：此后台的某个时间点（由InnoDB的各种机制触发），后台线程会缓慢地将 Buffer Pool 中的脏页写入到表空间数据文件（`.ibd`文件）中。一旦脏页被写入磁盘，对应的 Redo Log 记录就失去了作用，其占用的空间可以被覆盖重用。
 
 <br>
 
@@ -218,7 +218,7 @@ Redo log 刷盘策略指的就是参数 `innodb_flush_log_at_trx_commit` 的配�
 
 #### =1
 - **默认值，最安全**
-- **每次事务提交时**，都会将Log Buffer中的Redo Log（包括`PREPARE`和`COMMIT`）执行 `write` + `fsync` 强制刷盘。
+- **每次事务提交时**，都会将 Log Buffer 中的 Redo Log（包括`PREPARE`和`COMMIT`）执行 `write` + `fsync` 强制刷盘。
 - **保证了**：只要事务提交成功，所有相关的Redo Log一定在磁盘上。崩溃绝不会丢失已提交的事务。
 - **缺点**：因为每次提交都要写磁盘，IOPS开销大，性能最低。
 <br>
@@ -232,9 +232,15 @@ Redo log 刷盘策略指的就是参数 `innodb_flush_log_at_trx_commit` 的配�
 <br>
 
 #### =0 
-- 每秒一次地将Log Buffer中的Redo Log执行 `write` + `fsync` 到磁盘。
-- 提交事务时**完全不会**触发任何写磁盘操作。
+- 每秒一次地将日志缓冲区（Log Buffer）中的内容 `write` + `fsync` 到操作系统缓存。
+- 提交事务时完全不会触发任何写磁盘操作。
 - **风险最高**：如果 MySQL 崩溃，最多会丢失1秒内的所有事务。
+
+| 值    | 机制                                       | 优点                    | 缺点                                         | 适用场景                                                  |
+| :---- | :----------------------------------------- | :---------------------- | :------------------------------------------- | :-------------------------------------------------------- |
+| **0** | **每秒** write + fsync。提交时什么都不做。 | **速度最快**            | **最多丢失1秒数据**，不安全                  | 对数据安全要求不高的场景，如日志采集、缓存表等            |
+| **1** | **每次提交**都 write + fsync。             | **最安全**，ACID 持久性 | **速度最慢**，因为每次提交都要刷盘           | 数据安全性要求极高的场景，如金融交易系统                  |
+| **2** | **每次提交**都 write，但**每秒**才 fsync。 | 平衡安全与性能          | MySQL 进程崩溃不丢数据；**系统崩溃会丢数据** | 希望性能更好，但又能接受系统崩溃风险的情况（如机房有UPS） |
 
 <br>
 
@@ -258,60 +264,366 @@ binlog 刷盘策略指的就是参数 `sync_binlog` 的配值。binlog 是 MySQL
 
 ## InnoDB 存储引擎表空间
 
-Row page extent segment tablespace
+
+
+InnoDB 存储引擎会把所有数据在逻辑上存放在一个空间中（表空间 Tablespace）。表空间由段（Segment）组成，段由区（Extent）组成，区由页（Page）组成，页由行（Row）组成。
+
+
 
 ![](tablespace.png)
 
 
 
-表空间由三种段构成
-1、叶子节点数据段：即数据段
-2、非叶子节点数据段：即索引段
-3、回滚段
+#### 1. 行（Row）
+
+一行存放的是表中一行内容，包含该行所有 n 列内容。InnoDB 存储引擎是面向行的（row-oriented），也就是说数据的存放是按行进行存放的。
+
+<br>
+
+#### 2. 页（Page）
+
+多行数据被组织到一个 Page 中，一个 Page 即一个磁盘块大小，是 IO 操作的最小物理存储单元。也就是说查找数据时一次 IO 操作会读取一个 Page 的内容（很多行），这对索引数据结果非常有帮助。一个 Page 大小是 16 KB，最多是 7992 行记录。 
+
+<br>
+
+#### 3. 区（Extent）
+
+一个区由 64 个连续的页组成，每个区的大小为 1M。
+
+<br>
+
+#### 4. 段（Segment）
+
+一个段最多由 4 个区组成。对于大的数据段，InnoDB 存储引擎最多每次可以申请 4 个区，以此来保证数据的顺序性能。
+
+<br>
+
+#### 5. 表空间（Tablespace）
+
+表空间由三种段组成，分别是叶子节点数据段（真实数据段）、非叶子节点数据段（索引段）、回滚段（Undo log）。
+
+
+
+## 共享表空间
+
+mysql5.5 版本后出现共享表空间。它把所有表的数据、索引、数据字典、回滚段（UNDO）、双写缓冲区、更改缓冲区等集中存储在少数几个文件（如 `ibdata1`）中，类似 LVM 逻辑卷，是动态扩容的，初始大小为 12M，会根据数据量慢慢变大。不过从 MySQL 5.6.6 版本开始，**独立表空间** (每个表一个独立的 `.ibd` 文件) 成为了默认设置。
+
+通过以下命令查看当前 MySQL 实例的表空间设置，`innodb_file_per_table` 开启表明使用的是 独立表空间。
+
+~~~sql
+mysql> SHOW VARIABLES LIKE 'innodb_file_per_table';
++-----------------------+-------+
+| Variable_name         | Value |
++-----------------------+-------+
+| innodb_file_per_table | ON    |
++-----------------------+-------+
+~~~
+
+
+
+#### 修改共享表空间配置
+
+注意：如果文件 `ibdata1` 已经存在，无法再次修改它的大小，只能增加第二个文件。
+
+~~~ini
+# vi /etc/my.cnf
+# 开启独享表空间，并指定ibdata1大小为12M，ibdata2大小200M，自动扩张。
+
+[mysqld]
+# innodb_data_home_dir = /var/lib/mysql
+innodb_data_file_path = ibdata1:12M;ibdata2:200M:autoextend 
+~~~
+
+
+
+#### 查看共享表空间
+
+~~~sql
+mysql> show variables like '%path%';
++----------------------------------+-------------------------------------+
+| Variable_name                    | Value                               |
++----------------------------------+-------------------------------------+
+| innodb_data_file_path            | ibdata1:12M;ibdata2:200M:autoextend |
+| innodb_temp_data_file_path       | ibtmp1:12M:autoextend               |
+| sha256_password_private_key_path | private_key.pem                     |
+| sha256_password_public_key_path  | public_key.pem                      |
+| ssl_capath                       |                                     |
+| ssl_crlpath                      |                                     |
++----------------------------------+-------------------------------------+
+~~~
+
+
 
 
 
 ## 独立表空间
 
-File-Per-Table Tablespaces，这指的是**为每个用户表单独创建 `.ibd` 文件**的特性，由参数 `innodb_file_per_table` 控制。
+独立表空间是 InnoDB 存储引擎的一种磁盘文件管理方式，它指的是**每个 InnoDB 表都有自己的独立数据文件（.ibd 文件）**，而不是所有表共享一个巨大的系统表空间文件。
 
-- **在 MySQL 5.7 及以前**：还存储所有表的**undo logs**，以及如果没有开启 `innodb_file_per_table`，所有用户表和索引的数据也会放在这里。
+从 **MySQL 5.6.6** 版本开始，`innodb_file_per_table` 参数默认设置为 `ON`，这意味着：
+
+- **每个表对应两个文件**：`表名.frm`：存储表的元数据（结构信息）；`表名.ibd`：主要存储该表的数据、索引。
+- 系统表空间（`ibdata1`）的角色转变为**主要存储数据字典、双写缓冲区（Doublewrite Buffer）、回滚段（Undo Logs）和更改缓冲区（Change Buffer）** 等公共区域。
+
+在 MySQL 8.0 中，元数据被整合到了数据字典中，不再有 `.frm` 文件。
+
+MySQL 配置文件配置使用独立表空间，然后重启 MySQL 服务生效。**注意**：此设置**只对新创建的表生效**。
+
+~~~ini
+[mysqld]
+innodb_file_per_table=ON
+~~~
+
+对于已经存在于共享表空间中的表，你需要手动转换：
+
+```sql
+-- 使用 ALTER TABLE 重建表，这个过程会复制数据
+ALTER TABLE your_table_name ENGINE=InnoDB;
+```
+
+执行后，该表的数据就会从 `ibdata1` 中移出，并生成自己的 `your_table_name.ibd` 文件。
+
+#### 优点
+
+- **磁盘空间回收与管理**。执行 `DROP TABLE` 时，MySQL 可以直接删除对应的 `.ibd` 文件，操作系统会立即回收该空间。执行 `TRUNCATE TABLE` 或删除大量数据后，你可以通过执行 `OPTIMIZE TABLE table_name` 或 `ALTER TABLE table_name ENGINE=InnoDB` 来重建表，新的 `.ibd` 文件会变得紧凑，从而释放空间给操作系统。共享表空间中，上述操作释放的空间只会留在 `ibdata1` 文件内部，不会还给操作系统，导致文件不断膨胀。
+- **灵活的备份与恢复**。可以将单个表的 `.ibd` 和 `.frm` 文件复制到另一个服务器，进行快速迁移（需要配合 `ALTER TABLE ... DISCARD/IMPORT TABLESPACE` 命令）。
+- **更优的性能与监控**。不同的表可以分布在不同的磁盘上，分散 IO 竞争。
+
+#### 缺点
+
+- 每个表都有独立的文件，数据库中打开的表多了会消耗更多的文件描述符（对现代操作系统来说不是大问题）。
+- 潜在空间浪费。单表文件可能会非常大。
+- fsync 操作增加。因为文件变多了，在写入数据时，需要执行 `fsync` 操作的文件数量也可能增加。不过，InnoDB 的组提交（Group Commit）优化在很大程度上缓解了这个问题。
 
 
 
-- **MySQL 8.0 的默认行为：** **`ON` (开启)**
-
-  sql
-
-  ```
-  SHOW VARIABLES LIKE 'innodb_file_per_table';
-  -- 输出结果应该是：innodb_file_per_table ON
-  ```
-
-  
-
-- **这意味着：** 在 MySQL 8.0 中，**默认情况下，每个您创建的 InnoDB 表都会有自己的独立 `.ibd` 文件**，用于存储该表的数据和索引。系统表空间 `ibdata1` 不再存储用户数据。
 
 
+## 把表的 ibd 文件创建到其他文件夹中
 
-开启的好处；
+创建目标文件夹并授权
 
-**磁盘空间回收：** 这是最重要的好处。当您删除（DROP）一个表或截断（TRUNCATE）一个表时，操作系统可以立即回收该表 `.ibd` 文件所占用的磁盘空间。
+~~~bash
+mkdir /data2
+chown mysql.mysql -R /data2
+~~~
 
-可以将不同表的热数据、冷数据分布到不同的磁盘上（使用符号链接或利用 MySQL 的 `DATA DIRECTORY` 选项），实现更灵活的 I/O 优化。
+创建表指定 idb 文件位置
 
-**运行时可优化：** 可以运行时导入（import）或导出（export）单个表的功能（Transportable Tablespaces）。
-
-分离 undo log 成为可能。
+~~~sql
+CREATE TABLE t2(id int primary key)engine=innodb DATA DIRECTORY="/data2/";
+~~~
 
 
 
 
 
-## 分离Undo日志
+## 在线迁移表数据
 
-- **`innodb_max_undo_log_size`**: 控制**每个** undo 表空间文件的**最大体积**。
-- **`innodb_undo_tablespaces`**: 在 MySQL 5.7 中用于控制 undo 表空间的**数量**，**但在 MySQL 8.0 中此参数已废弃且无效**。在 MySQL 8.0.14+ 中，您应该使用 `CREATE UNDO TABLESPACE` 和 `DROP UNDO TABLESPACE` 来动态管理数量。MySQL 8.0 的默认行为是使用 **2个** 独立的、活动的 undo 表空间，每个表空间包含 **128个** 回滚段（由 `innodb_rollback_segments` 定义）。
+因为独立表空间的模式，可以把一张表从一个数据库移动到另一个数据库。
+
+使用该功能需要满足如下条件：
+
+- Mysql版本必须是5.6及以上。
+- 使用独立表空间模式。
+- 源库和目标库的 page size 必须一致，表结构必须一致。
+
+>注意：表结构必须一致包含表的 row_format 也保持一致。使用如下命令查看
+>
+>~~~sql
+>show table status like "t1";
+>~~~
+>
+>新建表时指定 row_format
+>
+>~~~sql
+>create table t1(id int)row_format=compact;
+>~~~
+
+
+
+#### 迁移流程
+
+比如把主机 A 上的 student 表数据迁移到主机 B 上
+
+1. 主机 A 加锁，实现只能读不能写。
+
+~~~sql
+FLUSH TABLES student FOR EXPORT; 
+~~~
+
+2. 主机 B 上新建一个和表student 数据结构一样的表
+
+~~~sql
+create table student(字段1 类型,字段2 类型,...);
+~~~
+
+3. 主机 B 上删除新建表的 .ibd 文件
+
+~~~sql
+ALTER TABLE student DISCARD TABLESPACE;
+~~~
+
+4. 主机 A 上执行 scp 命令把 student.ibd 文件拷贝到主机 B
+
+~~~bash
+scp /var/lib/mysql/db1/student.ibd <主机B>:/var/lib/mysql/db1/student.ibd
+~~~
+
+5. 主机 A 解锁
+
+~~~sql
+UNLOCK TABLES;
+~~~
+
+6. 主机 B 修改 student.ibd 文件属主属组
+
+~~~bash
+chown mysql.mysql /var/lib/mysql/db1/student.ibd
+~~~
+
+7. 主机 B  导入数据
+
+~~~sql
+ALTER TABLE  student IMPORT TABLESPACE;
+~~~
+
+
+
+## 使用 mysqldump 迁移数据
+
+~~~bash
+# 导出
+mysqlpump -u root -p --include-tables=你的表名 源数据库名 > dump.sql
+
+# 导入
+mysql -u root -p 目标数据库名 < dump.sql
+~~~
+
+
+
+
+
+## 分离 undo日志
+
+MySQL5.6 开始支持把 undo log 分离出来，放在独立的表空间中，并可以放在单独的文件目录中。
+
+配置三个参数可以把 undo log 从 ibddata 文件中移除。
+
+~~~ini
+# /etc/my.cnf
+
+[mysqld]
+innodb_undo_directory = /var/lib/mysql
+innodb_undo_tablespaces = 3
+innodb_undo_logs = 128
+~~~
+
+参数解释如下：
+
+- `innodb_undo_directory` 指定 undo log 文件放在哪个文件目录下，默认放在  `/var/lib/mysql`
+- `innodb_undo_tablespaces` 配置 undo log 文件的数量。配置为3，会产生3个初始大小为 10M 的文件，分别是：undo001、undo002、undo003
+- `innodb_undo_logs`指定undo 回滚段的个数，使用默认的 128 即可。
+
+>注意：参数 `innodb_undo_tablespaces`  在MySQL 8.0 默认已经是 2。从 MySQL 8.0.14 开始，此参数已弃用，因为 Undo 表空间现在总是在独立文件中创建。
+
+
+
+## 启用 undo 日志的自动空间回收机制
+
+MySQL5.7 开始支持 undo 日志自动截断回收功能。通过配置如下参数开启自动回收功能，并控制回收。
+
+~~~ini
+# /etc/my.cnf
+
+[mysqld]
+innodb_undo_log_truncate = ON
+innodb_max_undo_log_size = 1000M
+innodb_purge_rseg_truncate_frequency = 128
+~~~
+
+参数解释如下：
+
+- `innodb_undo_log_truncate` 配置值为 `ON` 表示开启自动回收功能。
+- `innodb_max_undo_log_size` 配置 undo log 文件的大小自动回收的阈值。超过阈值后标记为可回收。
+- `innodb_purge_rseg_truncate_frequency` 配置回收 undo log 的频率。配置的值表示 MySQL 每读少次垃圾回收后才清理一次 undo log。也就是说配置的值越大 undo log 回收的频率越低。
+
+
+
+需要注意，这些配置需要在 MySQL 初始化数据库前做好配置，如果数据库创建以后再配置就会会报错。因为 undo log 创建好以后就不能再次被修改会增加。
+
+
+
+MySQL8 开始默认 undo log 就是分离的（undo_001 和 undo_002），不需要在为分离配置任何参数。因此，给 MySQL 8.0 配置 Undo 回收的**最小且必需的配置**其实只需要两行：
+
+```ini
+[mysqld]
+innodb_undo_log_truncate = ON
+innodb_max_undo_log_size = 1G # 根据你的磁盘和负载调整
+```
+
+
+
+
+
+## 清理表空间
+
+删除数据后，空间不会被立即返还给操作系统，而是被标记为"可复用"，供后续的 INSERT 操作使用。这是 MySQL InnoDB 存储引擎的正常行为，**使用"空间复用"策略，而不是立即释放空间**。
+
+#### 📊 为什么这样设计？
+
+#### 性能优化考虑：
+
+| 行为         | 立即释放空间       | 空间复用策略   |
+| :----------- | :----------------- | :------------- |
+| **删除性能** | 慢（需要系统调用） | 快（只是标记） |
+| **插入性能** | 慢（需要重新分配） | 快（直接复用） |
+| **磁盘碎片** | 少                 | 可能产生碎片   |
+| **系统开销** | 大                 | 小             |
+
+
+
+### 🛠️ 解决方案
+
+#### 1. OPTIMIZE TABLE（推荐）
+
+```sql
+-- 重建表，释放未使用空间
+OPTIMIZE TABLE your_table_name;
+
+-- 这会创建新表，复制数据，删除旧表
+-- 需要足够的磁盘空间（临时空间）
+-- InnoDB 表会有警告提示，但也能实现效果
+```
+
+
+
+#### 2. ALTER TABLE
+
+```sql
+-- 通过修改表结构来重建
+ALTER TABLE your_table_name ENGINE=InnoDB;
+
+-- 或者
+ALTER TABLE your_table_name FORCE;
+```
+
+
+
+### 📈 实际示例
+
+```sql
+-- 示例输出：
+mysql> OPTIMIZE TABLE big_table;
++-----------------+----------+----------+-------------------------------------------------------------------+
+| Table           | Op       | Msg_type | Msg_text                                                          |
++-----------------+----------+----------+-------------------------------------------------------------------+
+| test.big_table  | optimize | note     | Table does not support optimize, doing recreate + analyze instead |
+| test.big_table  | optimize | status   | OK                                                                |
++-----------------+----------+----------+-------------------------------------------------------------------+
+```
+
+**总结**：这个提示是正常现象，对于 InnoDB 表来说，MySQL 正在用更有效的方式执行空间回收。虽然过程不同，但最终效果是一样的——表文件会变小，性能会提升。只需要确保在合适的时机执行即可。
 
 
 

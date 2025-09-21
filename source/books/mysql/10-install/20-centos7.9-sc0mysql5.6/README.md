@@ -1,6 +1,6 @@
-# 源码安装
+# Centos7.9 源码安装 mysql5.6
 
-Centos7.9 源码安装 mysql-5.6.46
+
 
 
 
