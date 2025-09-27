@@ -307,6 +307,23 @@ binlog_expire_logs_seconds = 604800  # 7天 = 7 * 24 * 60 * 60
 sync_binlog = 1
 ```
 
+
+
+#### 禁用 binlog
+
+~~~ini
+[mysqld]
+skip-log-bin
+
+# 同时建议注释或删除以下相关配置：
+# log-bin=mysql-bin
+# binlog_format=ROW
+# expire_logs_days=10
+# max_binlog_size=100M
+~~~
+
+
+
 #### sql_log_bin
 
 `sql_log_bin` 是一个用于控制当前数据库会话（Session/Connection）是否将执行的操作记录到二进制日志（binlog）中的开关。设置值为布尔值（`ON` 或 `OFF`）
