@@ -325,3 +325,10 @@ CHANGE MASTER TO MASTER_DELAY = 3600;
 start slave;
 ~~~
 
+#### 4. 观察延迟状态
+
+在主流新建一个数据库，在上使用 `show slave status\G` 命令查看领个参数的值
+
+- `SQL_Delay: 130` 显示设置的延迟时间。
+- `Seconds_Behind_Master: 23` 显示目前主从时间差。当时间差赶上设置的延迟时间则开始同步复制数据。然后重置为零。
+
