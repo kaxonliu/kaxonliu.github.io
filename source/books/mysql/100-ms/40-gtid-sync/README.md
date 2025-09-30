@@ -26,6 +26,9 @@ binlog_format = ROW
 # 强制GTID一致性，保证事务安全
 gtid_mode = ON
 enforce-gtid-consistency = ON
+
+# 跳过域名解析（非必须）
+skip-name-resolve
 ~~~
 
 
@@ -83,6 +86,8 @@ enforce-gtid-consistency = ON
 log-slave-updates = ON
 # 设置从库为只读，防止误操作（具有SUPER权限的用户仍可写）
 read_only = ON
+skip-name-resolve # 跳过域名解析（非必须）
+relay_log_purge = 0 # 关闭relay_log自动清除功能，保障故障时的数据一致
 ~~~
 
 
@@ -130,3 +135,16 @@ show slave status\G
 
 
 done
+
+
+
+
+
+~~~
+CHANGE MASTER TO
+MASTER_HOST = '192.168.10.18',
+MASTER_USER = 'repl',
+MASTER_PASSWORD = '123',
+MASTER_AUTO_POSITION = 1; -- 关键！启用GTID自动定位
+~~~
+
