@@ -2,11 +2,11 @@
 
 ## 环境
 
-- MySQL 版本： mysql-8.0.41-2.el9_5.aarch64
-- 操作系统： rockylinux9
-- 主库 IP: `192.168.10.18`
-- 从库 IP: `192.168.10.16` 和 `192.168.10.17`
-- MHA 管理节点：`192.168.10.19`
+- MySQL 版本： mysql-community-server-5.7.44-1.el7.x86_64
+- 操作系统： centos7.9
+- 主库 IP: `192.168.10.101`
+- 从库 IP: `192.168.10.102` 和 `192.168.10.103`
+- MHA 管理节点：`192.168.10.100`
 
 
 
@@ -14,125 +14,137 @@
 
 ## 安装部署 MHA
 
-#### 1. 安装依赖
+#### 1. GTID 同步配置
 
-所有主机安装依赖
+主从数据库服务器使用 gtid 的复制方式，所有数据库服务器都开启 binlog 日志和 relay log，并且关闭 `relay_log_purge` 功能。各 从节点在命令行模式下显示开启 `read_only` （不要配置到文件中）。
+
+**配置文件**。主从配置除了 `server-id` 不同，其他配置保持一样。
+
+~~~ini
+[mysqld]
+datadir=/var/lib/mysql
+
+# 主从相关配置
+server-id=100
+binlog_format=row
+log-bin=mysql-bin
+relay-log = mysql-relay-bin
+
+gtid-mode=on 
+enforce-gtid-consistency=true 
+# slave更新是否记入日志（5.6必须的）
+log-slave-updates=1 
+ # 关闭relay_log自动清除功能，保障故障时的数据一致
+relay_log_purge = 0
+# 不要域名解析
+skip-name-resolve 
+~~~
+
+**从库设置只读**。只在从库设置只读
+
+~~~sql
+set global read_only=1;
+~~~
+
+**重启服务**
 
 ~~~bash
-# 安装 epel-release 包
-yum -y install epel-release
+systemctl restart mysqld
+~~~
 
-# 启用 CRB 仓库
-yum config-manager --set-enabled crb
+**主库查看状态**
+
+~~~sql
+show master status\G
+~~~
+
+**从库开启同步**
+
+~~~sql
+-- sql
+stop slave;
+reset slave;
+
+change master to 
+    master_host='192.168.10.101',
+    master_user='repl',
+    master_password='Liuxu@123',
+    MASTER_AUTO_POSITION=1;
+    
+start slave;
+show slave status\G
+~~~
+
+**在主库上创建 mha 管理账号**
+
+~~~sql
+-- sql
+grant all on *.* to 'mhaadmin'@'%' identified by 'Liuxu@123';
+flush privileges;
+~~~
+
+
+
+#### 2. 配置免密登录
+
+~~~bash
+-- bash
+#创建秘钥对
+#正常创建 ssh-keygen 需要交互 按回车，用以下方法跳过交互
+ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa >/dev/null 2>&1
+#发送公钥，包括自己
+ssh-copy-id -i /root/.ssh/id_rsa.pub root@192.168.10.100
+ssh-copy-id -i /root/.ssh/id_rsa.pub root@192.168.10.101
+ssh-copy-id -i /root/.ssh/id_rsa.pub root@192.168.10.102
+ssh-copy-id -i /root/.ssh/id_rsa.pub root@192.168.10.103
+~~~
+
+
+
+#### 3. 安装软件依赖包
+
+~~~bash
+# 安装yum源
+yum -y install epel-release
  
 # 安装MHA依赖的perl包
-yum install -y perl
 yum install -y perl-DBD-MySQL perl-Config-Tiny perl-Log-Dispatch perl-Parallel-ForkManager
 ~~~
 
 
 
-#### 2. 安装 mha4mysql-node
-
-在所有主机安装 mha4mysql-node
+#### 4. 在所有主机上安装 node 包
 
 ~~~bash
 wget https://qiniu.wsfnk.com/mha4mysql-node-0.58-0.el7.centos.noarch.rpm --no-check-certificate
 rpm -ivh mha4mysql-node-0.58-0.el7.centos.noarch.rpm
 ~~~
 
-#### 3. 安装 mha4mysql-manager
 
-仅在管理主机上安装 manager
 
-~~~bash
+#### 5. 在管理机器安装 manager 包
+
+~~~bas
 wget https://qiniu.wsfnk.com/mha4mysql-manager-0.58-0.el7.centos.noarch.rpm --no-check-certificate
 rpm -ivh mha4mysql-manager-0.58-0.el7.centos.noarch.rpm
 ~~~
 
 
 
-#### 4. 创建管理用户
+#### 6. 配置mha manager
 
-在主库上创建一个管理用户，让 MHA 可以登陆 MySQL 做管理。
-
-~~~sql
--- sql
-create user 'mhaadmin'@'%' identified by '666';
-grant all on *.* to 'mhaadmin'@'%';
-flush privileges;
-~~~
-
-
-
-#### 5. 修改 MySQL 配置文件
-
-各节点都要开启二进制日志和中继日志，关闭 `relay_log_purge` 功能。
-
-注意：不要在配置文件中配置从库 `read-only` 属性，在命令行中设置。
-
-**主库配置**
-
-~~~ini
-[mysqld]
-server-id = 1
-log-bin = mysql-bin
-binlog_format = ROW
-gtid_mode = ON
-enforce-gtid-consistency = ON
-relay_log_purge = 0
-~~~
-
-
-
-**从库配置**。注意每个从库的 `server-id` 都不一样，并且和主库的也不能一样。
-
-~~~ini
-server-id = 2
-relay-log = mysql-relay-bin
-gtid_mode = ON
-enforce-gtid-consistency = ON
-log-slave-updates = ON
-relay_log_purge = 0
-~~~
-
-然后在从库登陆 MySQL，在命令行输入如下命令，使从库只读。
-
-~~~sql
--- sql
-set global read_only=1;
-~~~
-
-
-
-#### 6. 配置免密登陆
-
-所有主机互做免密登陆
-
-~~~bash
-#创建秘钥对
-#正常创建 ssh-keygen 需要交互 按回车，用以下方法跳过交互
-ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa >/dev/null 2>&1
-
-#发送公钥，包括自己
-ssh-copy-id -i /root/.ssh/id_rsa.pub root@192.168.10.18
-ssh-copy-id -i /root/.ssh/id_rsa.pub root@192.168.10.19
-ssh-copy-id -i /root/.ssh/id_rsa.pub root@192.168.10.16
-ssh-copy-id -i /root/.ssh/id_rsa.pub root@192.168.10.17
-~~~
-
-
-
-#### 7. 配置 MHA Manager
-
-在 manager 节点上创建工作目录。
+创建工作目录
 
 ~~~bash
 mkdir -p /service/mha/
 mkdir /service/mha/app1
 ~~~
 
-修改配置  `/service/mha/app1.cnf`
+
+
+#### 7. 创建配置
+
+在文件 `/service/mha/app1.cnf` 文件中保存如下配置。
 
 ~~~ini
 [server default]            
@@ -151,32 +163,29 @@ ssh_port=22
  
 #管理用户
 user=mhaadmin
-password=666
+password=Liuxu@123
  
 #复制用户
 repl_user=repl  
-repl_password=123
- 
+repl_password=Liuxu@123
+
 #检测主库心跳的间隔时间
 ping_interval=1
  
 [server1]
 # 指定自己的binlog日志存放目录
 master_binlog_dir=/var/lib/mysql
-hostname=192.168.10.18
+hostname=192.168.10.101
 port=3306
  
 [server2]
-#暂时注释掉，先不使用
-#candidate_master=1
-#check_repl_delay=0
 master_binlog_dir=/var/lib/mysql
-hostname=192.168.10.16
+hostname=192.168.10.102
 port=3306
  
 [server3]
 master_binlog_dir=/var/lib/mysql
-hostname=192.168.10.17
+hostname=192.168.10.103
 port=3306
  
 # 1、设置了以下两个参数，则该从库成为候选主库，优先级最高
@@ -188,20 +197,97 @@ check_repl_delay=0
 
 
 
-#### 8. 检查 mha 配置状态
+#### 8. 检查 MHA 配置状态
 
 ~~~bash
-#测试免密连接
-1.使用mha命令检测ssh免密登录
+# 使用mha命令检测ssh免密登录
+# 看到 ALL SSH ... successfilly 表示ok了
 masterha_check_ssh --conf=/service/mha/app1.cnf
-    ALL SSH ... successfilly 表示ok了
- 
-2.使用mha命令检测主从状态
+    
+# 使用mha命令检测主从状态
+# 看到... Health is OK
 masterha_check_repl --conf=/service/mha/app1.cnf
-    ... Health is OK
- 
-#如果出现问题，可能是反向解析问题，配置文件加上
-    skip-name-resolve
-#还有可能是主从状态，mha用户密码的情况
+~~~
+
+
+
+#### 9. 启动 mha
+
+~~~bash
+nohup masterha_manager --conf /service/mha/app1.cnf --remove_dead_master_conf \
+  --ignore_last_failover < /dev/null > /service/mha/manager.log 2>&1 &
+~~~
+
+
+
+#### 10. 测试故障自动迁移
+
+把主库停掉，观察 mha 的日志，等完成故障修复后。把停掉的主库重启，然后配置成从库执行新的主库。
+
+时时查看日志
+
+~~~bash
+tail -f /service/mha/manager.log
+~~~
+
+停掉主库
+
+~~~bash
+# 192.168.10.101
+systemctl stop mysqld
+~~~
+
+查看新主库
+
+~~~bash
+[root@manager mha]# grep -i 'change master to' /service/mha/manager.log 
+Thu Oct  2 10:58:30 2025 - [info]  All other slaves should start replication from here. Statement should be: CHANGE MASTER TO MASTER_HOST='192.168.10.103', MASTER_PORT=3306, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='xxx';
+~~~
+
+启动宕机的主库
+
+~~~bash
+# 192.168.10.101
+systemctl start mysqld
+~~~
+
+把宕机的主库配置成从库
+
+~~~sql
+--- sql
+stop slave;
+reset slave;
+
+change master to 
+    master_host='192.168.10.103',
+    master_user='repl',
+    master_password='Liuxu@123',
+    MASTER_AUTO_POSITION=1;
+    
+start slave;
+show slave status\G
+~~~
+
+在 mha 配置文件中添加 server1（server1 是之前的宕机的主库）
+
+~~~ini
+[server1]
+hostname=192.168.10.101
+master_binlog_dir=/var/lib/mysql
+port=3306
+~~~
+
+再次启动 mha。（故障迁移一次 mha 就停掉了，故障修复后需要重新启动。）
+
+~~~bash
+nohup masterha_manager --conf /service/mha/app1.cnf --remove_dead_master_conf \
+  --ignore_last_failover < /dev/null > /service/mha/manager.log 2>&1 &
+~~~
+
+检查 mha 启动状态
+
+~~~bash
+[root@manager mha]# masterha_check_status --conf=/service/mha/app1.cnf 
+app1 (pid:1831) is running(0:PING_OK), master:192.168.10.103
 ~~~
 
