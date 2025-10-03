@@ -14,8 +14,8 @@ site:
       uri: /books/linux/index.html
     - title: Architecture
       uri: /books/architecture/index.html
-    - title: MySQL
-      uri: /books/mysql/index.html
+    - title: DB
+      uri: /books/db/index.html
     - title: Docker
       uri: /books/docker/index.html
     - title: 外出看看
