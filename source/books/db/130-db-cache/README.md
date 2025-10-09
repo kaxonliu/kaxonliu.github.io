@@ -4,7 +4,7 @@ MySQL 有两个缓存机制，一个是 query cache，另一个是 buffer pool�
 
 query cache 缓存的是 SQL 语句及其结果集，缓存在内存中。如果 SQL 语句重复度低，那么 query cache 的缓存命中率就很低。
 
-buffer pool 缓存的是数据库中表的结果，加速写和查询。如果表中的数据在 buffer pool 中，那么直接使用，如果不在再从硬盘上加载。它是 MySQL 主要的缓存方式。
+buffer pool 缓存的是数据库中表的结果，加速写和查询。如果表中的数据在 buffer pool 中，那么直接使用，如果没有则再从硬盘上加载。它是 MySQL 主要的缓存方式。
 
 
 
@@ -29,7 +29,7 @@ mysql> show variables like '%query_cache%';
 - `have_query_cache`  表示是否支持 query cache
 - `query_cache_limit` 表示缓存块的大小，超了就不会被缓存。
 - `query_cache_size` 表示缓存的总内存大小，一般设置为 200M，不建议超过 256M
-- `query_cache_type` 表示是否开启query cache
+- `query_cache_type` 表示是否开启 query cache
 
 
 
@@ -53,14 +53,14 @@ mysql> show status like '%qcache%';
 
 参数解析
 
-- `Qcache_free_blocks` 表示内存碎片的大小。值不应该过大，打了应该清理，清理的方法：`flush query cache;`
-- `Qcache_free_memory` 表示qcache 剩余的缓存空间大小。
+- `Qcache_free_blocks` 表示内存碎片的大小。值不应该过大，大了应该清理，清理的方法：`flush query cache;`
+- `Qcache_free_memory` 表示 qcache 剩余的缓存空间大小。
 - `Qcache_hits` 缓存命中次数
 - `Qcache_inserts` 未命中次数。
-- 命中率：`Qcache_hits` /(`Qcache_hits`  + `Qcache_inserts` )
-- `Qcache_lowmem_prunes` 表示因为内存不足而被清楚query的次数
-- `Qcache_not_cached` 不能被cache 的查询次数。
-- 当前qucher cache 中被缓存的query 数量。
+- 命中率：`Qcache_hits` / ( `Qcache_hits`  + `Qcache_inserts` )
+- `Qcache_lowmem_prunes` 表示因为内存不足而被清除 query 的次数
+- `Qcache_not_cached` 不能被 cache 的查询次数。
+- 当前 qucher cache 中被缓存的 query 数量。
 
 
 
@@ -91,7 +91,7 @@ mysql> show variables like '%innodb_buffer_pool%';
 参数解释
 
 - `innodb_buffer_pool_size` 表示 buffer pool 内存大小
-- `innodb_buffer_pool_dump_now` 值为开启则表示立刻将缓存池中的热数据保存包硬盘。
+- `innodb_buffer_pool_dump_now` 值为开启则表示立刻将缓存池中的热数据保存到硬盘。
 - `innodb_buffer_pool_load_now` 值为开启则表示立刻加载数据到缓存池。
 - `innodb_buffer_pool_load_at_startup` 值为开启则表示启动 MySQL 时将本地热数据加载到缓存池。
 - `innodb_buffer_pool_dump_at_shutdown` 值为开启则表示关闭 MySQL 时自动保存缓存池中数据到硬盘。
@@ -106,7 +106,7 @@ show status like '%innodb_buffer_pool%';
 
 其中两个参数可以计算缓存命中率：
 
-（`Innodb_buffer_pool_read_requests` - `Innodb_buffer_pool_reads`）/ `Innodb_buffer_pool_read_requests` 
+（ `Innodb_buffer_pool_read_requests` - `Innodb_buffer_pool_reads` ）/ `Innodb_buffer_pool_read_requests` 
 
 
 
@@ -116,13 +116,13 @@ show status like '%innodb_buffer_pool%';
 
 ## Redis 为什么快
 
-Redis 是一种基于单线程模型的数据库（NOSQL，非关系型数据库），数据存在内存，使用 epool模型，高效的内存管理机制和数据结构，使得 Redis 的查询速度极快。
+Redis 是一种基于单线程模型的数据库（NOSQL，非关系型数据库），数据存在内存，使用 epoll 模型，高效的内存管理机制和数据结构，使得 Redis 的查询速度极快。
 
 一般使用 Redis 做缓存和数据库使用。
 
 Redis 快的原因：
 
-- 基于单线程+ io 多路复用。单线程避免竞争消耗，io 多路复用优化了单线程下的 io 阻塞。推荐使用 epoll 模型（linux操作系统支持epoll），epoll 没有最大并发限制，基于事件回调机制，无需轮询；共享内存无需数据拷贝，不需要把用户态数据拷贝到内核态，效率高。redis6.x 之后推出了多线程模型，但主流程依然是单线程，只是网络 IO 处理环节使用多线程模型来处理。
+- 基于单线程+ io 多路复用。单线程避免竞争消耗，io 多路复用优化了单线程下的 io 阻塞。推荐使用 epoll 模型（linux操作系统支持epoll），epoll 没有最大并发限制，基于事件回调机制，无需轮询；共享内存无需数据拷贝，不需要把用户态数据拷贝到内核态，效率高。redis6.x 之后推出了多线程模型，但主流程依然是单线程，只是网络 IO 处理环节使用多线程模型来加快分发事件。
 - 数据存在内存。
 - 高效的数据结构。牺牲空间换查询时间。
 - 高效的内存管理。存数据时严格按照最大内存限制。过期数据采用惰性删除，同时也会定期删除键及时释放内存。高效的数据淘汰策略。
