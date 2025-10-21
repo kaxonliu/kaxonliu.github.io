@@ -85,8 +85,6 @@ For more examples and ideas, visit:
 
 
 
-<br>
-
 ## 总结
 
 `docker run hello-world` 的输出结果清晰地展示了 Docker 的基本工作流程，包括镜像的拉取、容器的创建和运行，以及客户端与守护进程的交互。

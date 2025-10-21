@@ -64,10 +64,6 @@ docker run -v /opt/data:/data [image_name]
 
 
 
-<br>
-
-
-
 ~~~alert type=important
 **`docker volume create` 方式**：<br>
 
