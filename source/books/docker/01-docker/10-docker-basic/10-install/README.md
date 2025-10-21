@@ -77,7 +77,7 @@ systemctl status docker
 #### 第七步：配置 docker
 
 ~~~bash
-cat > /etc/docker/daemon.json >> "EOF"
+cat > /etc/docker/daemon.json << "EOF"
 {
 "exec-opts": ["native.cgroupdriver=systemd"],
 "registry-mirrors":["https://px3nm1rd.mirror.aliyuncs.com"],
