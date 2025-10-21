@@ -16,6 +16,86 @@ Mac 安装 Docker 非常方便，可以直接到 [Docker 官网](https://www.doc
 
 
 
+## Centos7 安装 docker
+
+#### 第一步：准备环境
+
+~~~bash
+# 关闭selinux
+# 永久关闭
+sed -i 's#enforcing#disabled#g' /etc/selinux/config
+
+#临时关闭
+setenforce 0
+
+# 关防火墙
+systemctl disable --now firewalld
+
+# 关swap分区
+# 关闭swap分区,至于为何要关闭swap，在后续介绍cgroup时会详细介绍
+swapoff -a 
+ 
+# 注释swap分区
+vim /etc/fstab
+~~~
+
+#### 第二步：卸载老版本
+
+~~~bash
+yum remove docker docker-common docker-selinux docker-engine -y
+~~~
+
+#### 第三步：安装依赖包
+
+~~~bash
+yum install -y yum-utils device-mapper-persistent-data lvm2
+~~~
+
+#### 第四步：安装 docker yum 源
+
+~~~bash
+yum install wget -y
+ 
+# 使用阿里云
+yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+~~~
+
+#### 第五步：安装 docker
+
+~~~bash
+yum install docker-ce -y
+~~~
+
+#### 第六步：启动 docker
+
+~~~bash
+systemctl start docker
+systemctl ensble docker
+systemctl status docker
+~~~
+
+#### 第七步：配置 docker
+
+~~~bash
+cat > /etc/docker/daemon.json >> "EOF"
+{
+"exec-opts": ["native.cgroupdriver=systemd"],
+"registry-mirrors":["https://px3nm1rd.mirror.aliyuncs.com"],
+"live-restore": true
+}
+"EOF"
+~~~
+
+#### 第八步：查看 docker 信息
+
+~~~bash
+docker info
+~~~
+
+
+
+
+
 ## Ubuntu 安装 docker
 
 本教程选择使用腾讯云 Linux 虚拟机，购买一台 Ubuntu 服务器，作为学习使用，基础配置即可（2核2G内存）。如果首次购买，或者学生身份购买，或者试用，价格都很实惠。
@@ -79,8 +159,6 @@ ubuntu@VM-12-14-ubuntu:~$ sudo docker pull nginx
 
 
 
-
-
 ### 第四步：检查 daemon.json
 
 Docker 安装后了之后需要测试是否可以下载镜像，如果因为镜像源的问题不能下载则需要配置腾讯云官方镜像源。
@@ -113,10 +191,6 @@ sudo systemctl restart docker
 ```sudo systemctl enable docker```<br>
 ```
 
-
-
-
-
 ### 第五步： 验证换源成功
 
 ~~~bash
@@ -140,3 +214,6 @@ nginx        latest    97662d24417b   9 days ago   192MB
 ~~~
 
 如果看到上述反馈内容，则表明你的 Docker 可以正常使用了，恭喜🎉🎉🎉。
+
+
+
