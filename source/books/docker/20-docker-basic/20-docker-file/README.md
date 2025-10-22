@@ -49,9 +49,9 @@ nginx        latest    5ef79149e0ec   2 weeks ago      188MB
 
 
 
-<br>
 
-# Dockerfile 常用指令 
+
+## Dockerfile 常用指令 
 
 **FROM**：指定基础镜像，必须为 Dockerfile 文件的第一条指令
 
@@ -232,9 +232,23 @@ CMD ["/"]
 
 
 
-<br>
+#### 注意：命令的格式
 
-# Dockerfile 最佳实践
+`CMD` 和 `ENTRYPOINT` 后面的命令有两种格式：shell 格式和 exec 格式。
+
+两种格式有区别：shell 格式的命令在执行时会被转换为：`/bin/sh -c <命令>`，exec 格式的命令会原封不动的执行。比如：`CMD mysql_install_db --user=mysql --datadir=/service/mysql/data`，
+
+实际执行时转化为：`/bin/sh -c "mysql_install_db --user=mysql --datadir=/service/mysql/data"`
+
+如果是：`CMD ["mysql_install_db", "--user=mysql", "--datadir=/service/mysql/data"]`实际执行时则不会转换。
+
+因为存在上述区别，所有如果命令中含有变量，那么使用 shell 的格式可以引用变量的值。
+
+
+
+
+
+## Dockerfile 最佳实践
 
 > 推荐参考官网原文：https://docs.docker.com/build/building/best-practices/
 
@@ -245,15 +259,136 @@ CMD ["/"]
 - 不要安装不需要的包
 - 应用解耦
 - 对多行参数进行排序
+- 多个命令使用 `&&` 一次执行，减少镜像层级。
 - 使用`RUN apt-get update && apt-get install -y` 确保您的 Dockerfile 安装最新的软件包版本，无需进一步编码或手动干预。
 
 
 
+## 构建 nginx 镜像
+
+基于 centos:7 镜像，使用 dockefile 构建 nginx 镜像。
 
 
-<br>
 
-# 构建有网络工具的 nginx 镜像
+#### 1. 创建工作目录
+
+~~~bash
+cd /test
+~~~
+
+#### 2. 准备基础yum源
+
+准备 `CentOS-Base.repo`
+
+~~~bash
+cat > /test/CentOS-Base.repo << "EOF"
+[base]
+name=CentOS-$releasever
+enabled=1
+failovermethod=priority
+baseurl=http://mirrors.cloud.aliyuncs.com/centos/$releasever/os/$basearch/
+gpgcheck=1
+gpgkey=http://mirrors.cloud.aliyuncs.com/centos/RPM-GPG-KEY-CentOS-7
+
+[updates]
+name=CentOS-$releasever
+enabled=1
+failovermethod=priority
+baseurl=http://mirrors.cloud.aliyuncs.com/centos/$releasever/updates/$basearch/
+gpgcheck=1
+gpgkey=http://mirrors.cloud.aliyuncs.com/centos/RPM-GPG-KEY-CentOS-7
+
+[extras]
+name=CentOS-$releasever
+enabled=1
+failovermethod=priority
+baseurl=http://mirrors.cloud.aliyuncs.com/centos/$releasever/extras/$basearch/
+gpgcheck=1
+gpgkey=http://mirrors.cloud.aliyuncs.com/centos/RPM-GPG-KEY-CentOS-7[root@me yum.repos.d]
+EOF
+~~~
+
+准备 `epel.repo`
+
+~~~bash
+cat > /test/epel.repo << "EOF"
+[epel]
+name=Extra Packages for Enterprise Linux 7 - $basearch
+enabled=1
+failovermethod=priority
+baseurl=http://mirrors.cloud.aliyuncs.com/epel/7/$basearch
+gpgcheck=0
+gpgkey=http://mirrors.cloud.aliyuncs.com/epel/RPM-GPG-KEY-EPEL-7
+EOF
+~~~
+
+准备 `nginx.repo`
+
+~~~bash
+cat > /test/nginx.repo << EOF
+[nginx-stable]
+name=nginx stable repo
+baseurl=http://nginx.org/packages/centos/7/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true
+EOF
+~~~
+
+#### 3. 创建 dockerfile
+
+~~~bash
+cat > /test/dockerfile << "EOF"
+FROM centos:7
+
+COPY *.repo /etc/yum.repos.d/
+
+# chmod 可以在普通用户下有启动权限
+RUN yum install -y nginx && chmod u+s /usr/sbin/nginx
+
+USER nginx
+WORKDIR /etc/nginx/
+EXPOSE 80 
+ENV x=1
+ENV y=2
+
+CMD ["nginx","-g","daemon off;"]
+EOF
+~~~
+
+#### 4. 构建镜像
+
+~~~bash
+cd /test
+docker build -t mynginx:v1 .
+~~~
+
+#### 5. 准备数据卷
+
+~~~bash
+mkdir -p /abc
+echo 111 > /abc/index.html
+~~~
+
+#### 6. 创建并运行容器
+
+~~~bash
+docker run -d -v /abc:/usr/share/nginx/html -p 8899:80 --name myningx mynginx:v1
+~~~
+
+#### 7. 测试
+
+~~~bash
+[root@me test]# curl http://127.0.0.1:8899
+111
+~~~
+
+
+
+
+
+## 构建有网络工具的 nginx 镜像
 
 **debian.sources**
 
@@ -326,7 +461,7 @@ nginx        latest    5ef79149e0ec   2 weeks ago          188MB
 
 <br>
 
-# 构建 flask 项目的镜像
+## 构建 flask 项目的镜像
 
 **app.py**
 
@@ -377,4 +512,8 @@ docker run -f --rm --name app -p 5000:5000 flask-app:v1
 ~~~bash
 curl http://127.0.0.1:5000/
 ~~~
+
+
+
+
 
