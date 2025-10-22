@@ -262,6 +262,96 @@ CMD ["/"]
 - 多个命令使用 `&&` 一次执行，减少镜像层级。
 - 使用`RUN apt-get update && apt-get install -y` 确保您的 Dockerfile 安装最新的软件包版本，无需进一步编码或手动干预。
 
+#### 如何精简镜像
+
+~~~bash
+1、删除无用安装包
+2、清理日志
+3、多条run命令用&&符号合并为一条，因为run一次则产生一层
+4、一些必须存在的大文件，tar czf打包并且压缩，然后用的时候再解压开
+5、用基础镜像
+6、多阶段构建
+~~~
+
+#### 镜像制作规范
+
+~~~bash
+1、关键字使用大写
+2、FROM镜像，指定明确的Tag，不要使用latest
+3、尽量将命令放在同一个RUN命令下，减少层数
+4、镜像中避免多进程，如果一定要使用，请引入tini命令，用来管理进程
+RUN yum install tini -y && yum clean all -y
+ENTRYPOINT ['tini', '--']
+ 
+5、CMD与ENTRYPOINT的命令格式尽量使用exec格式，使真正应用的进程ID为1
+6、清理临时文件，如yum install后需要执行yum clean all -y
+7、优化Dockerfile命令的顺序，尽量把不变的放在前面
+8、使用WORKDIR指定工作目录，避免绝对路径扩散
+9、使用 set -o pipefail 避免管道错误被忽略
+RUN set -o pipefail && wget -O - https://some.site | wc -l > /number
+ 
+10、优先使用COPY，比ADD更简单明了
+11、始终暴露重要端口
+12、习惯使用环境变量，同时在Dockerfile中为环境变量设置默认值
+ENV APP_PORT=8761
+ 
+13、避免设置默认密码
+14、镜像中不要安装sshd
+15、使用volume显示设置挂载点，以方便镜像的使用者知道需要如何定义存储卷
+16、支持任一用户运行，对于需要访问的目录文件执行以下命令更新权限
+RUN chgrp -R 0 /some/directory && \
+    chmod -R g+rwX /some/directory
+ 
+17、Dockerfile的最后使用USER指定数字用户
+USER 1001
+ 
+18、应用基础镜像应该安装公用的依赖库
+19、为镜像设置元数据，例如说明镜像的用途等
+格式为：
+    LABEL <key>=<value> <key>=<value> <key>=<value> …
+LABEL指令添加元数据到一个镜像。一个LABEL是一个键值对。要在LABEL值中包含空格，使用双引号和反斜杠，就像在命令行解析中一样。一些可用的示例：
+ 
+    LABEL "com.example.vendor"="ACME Incorporated"
+    LABEL com.example.label-with-value="foo"
+    LABEL version="1.0"
+    LABEL description="This text illustrates
+    that label-values can span multiple lines."
+ 
+一个镜像可以有多个label。要指定多个labels，Docker推荐尽可能地把多个labels合并到一个LABEL指令中去。每一个LABEL指令会生成一个新的镜像层，如果你使用多个label，将导致构建出一个低效的镜像。这个示例只生成单个镜像层。
+ 
+    LABEL multi.label1="value1" multi.label2="value2" other="value3"
+ 
+上面的示例可以重写为：
+    LABEL multi.label1="value1" \
+          multi.label2="value2" \
+          other="value3"
+label是累积的，包括FROM镜像的lable。如果Docker遇到一个label/key已经存在，那么新的值将覆盖这个label/key。
+要查看一个镜像的label，使用docker inspect命令。
+ 
+    "Labels": {
+        "com.example.vendor": "ACME Incorporated"
+        "com.example.label-with-value": "foo",
+        "version": "1.0",
+        "description": "This text illustrates that label-values can span multiple lines.",
+        "multi.label1": "value1",
+        "multi.label2": "value2",
+        "other": "value3"
+    },
+ 
+示例：
+LABEL io.openshift.tags="mongodb,mongodb24,nosql" \
+      io.openshift.min-memory="8Gi" \
+      io.openshift.min-cpu="4" \
+      io.openshift.non-scalable="true" \
+      io.k8s.description="The MySQL 5.5 Server with master-slave replication support" \
+      io.openshift.wants="mongodb,redis"
+ 
+19、尽量将应用的日志以标准输出的形式输出，这样可以被容器平台统一收集管理。
+20、镜像中为应用准备好健康检查的探针，方便容器平台对应用进行健康检查。
+~~~
+
+
+
 
 
 ## 构建 nginx 镜像
@@ -345,7 +435,9 @@ FROM centos:7
 COPY *.repo /etc/yum.repos.d/
 
 # chmod 可以在普通用户下有启动权限
-RUN yum install -y nginx && chmod u+s /usr/sbin/nginx
+RUN yum install -y nginx && \
+    yum clean all -y && \
+    chmod u+s /usr/sbin/nginx
 
 USER nginx
 WORKDIR /etc/nginx/
@@ -382,6 +474,37 @@ docker run -d -v /abc:/usr/share/nginx/html -p 8899:80 --name myningx mynginx:v1
 ~~~bash
 [root@me test]# curl http://127.0.0.1:8899
 111
+~~~
+
+
+
+## 查看容器日志
+
+可以使用 `docker logs <container>` 查看容器内日志。但前提是容器内把日志输出到标准正确终端和标准错误终端。虽然容器内日志输出到标准终端，但是在宿主机上依然会保存。保存的文件在：`/var/lib/docker/containers/<container_id>/<container_id>-json.log`。有了这个文件，就可以使用 `docker logs <container_id>` 查看日志。
+
+比如 nginx 的访问日志和错误日志，定义如下 dockerfile 让日志输出到终端。
+
+~~~bash
+cat > /test/dockerfile << "EOF"
+FROM centos:7
+
+COPY *.repo /etc/yum.repos.d/
+
+# chmod 可以在普通用户下有启动权限
+RUN yum install -y nginx && \
+    yum clean all -y && \
+    chmod u+s /usr/sbin/nginx && \
+    ln -sf /dev/stdout /var/log/nginx/access.log && \
+    ln -sf /dev/stderr /var/log/nginx/error.log
+
+USER nginx
+WORKDIR /etc/nginx/
+EXPOSE 80 
+ENV x=1
+ENV y=2
+
+CMD ["nginx","-g","daemon off;"]
+EOF
 ~~~
 
 
@@ -488,10 +611,16 @@ flask
 ~~~dockerfile
 FROM python:3.10-alpine
 WORKDIR /code
-ENV FLASK_APP=app.py FLASK_RUN_HOST=0.0.0.0
-COPY . .
-RUN pip install -r requirements.txt
 EXPOSE 5000
+
+COPY app.py .
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt \
+    -i https://mirrors.aliyun.com/pypi/simple
+
+ENV FLASK_APP=app.py FLASK_RUN_HOST=0.0.0.0
+
 CMD ["flask", "run", "--debug"]
 ~~~
 
