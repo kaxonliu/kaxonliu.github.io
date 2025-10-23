@@ -2,17 +2,19 @@
 
 docker 的网络分为单机网络和跨主机网络。
 
-单机上，默认安装 Docker 后会在主机上创建创建三个网络，分别是 `bridge`、`host`、`none`。
+单机上，默认安装 Docker 后会在主机上创建三个网络，分别是 `bridge`、`host`、`none`，除此之外还有一个 特殊的 `container` 网络。
 
 ## bridge 桥接网络
 
 Docker 默认使用的网络模式，使用 `docker run` 命令创建容器时如果不指定网络模式，那么就会使用 bridge 模式。
 
-使用这种网络模式的容器，都会挂载到一个网桥设备，默认叫 `docker0`，本质就是一台虚拟机的二层交换机。每创建一个容器，都会生成一个 veth对，veth对 顾名思义是成对出现的，veth  对就好像一根网线，网线的一端接到容器内，被命名为 `eth0`，另外一端接到宿主机上的 `docker0` 网桥上，名为 `vethxxx`。
+使用这种网络模式的容器，都会挂载到一个网桥设备 `docker0`，本质就是一台虚拟的二层交换机。每创建一个容器，都会生成一个 veth 对，veth 对顾名思义是成对出现的，veth  对就好像一根网线，网线的一端接到容器内，被命名为 `eth0`，另外一端接到宿主机上的 `docker0` 网桥上，名为 `vethxxx`。
 
-容器内的服务想要被外部访问需要暴露端口并和宿主机做端口映射。
+容器内的服务想要被外部访问需要暴露端口并和宿主机做端口映射。访问宿主机的端口即可访问到映射在容器内对应端口的服务。
 
-**运行容器时指定挂载网络**
+
+
+#### 运行容器时挂载网络
 
 ~~~bash
 docker run --network bridge --name my-nginx nginx
@@ -20,7 +22,7 @@ docker run --network bridge --name my-nginx nginx
 docker run  --name my-nginx nginx
 ~~~
 
-**查看网桥上的接口情况**
+#### 查看网桥上的接口情况
 
 ~~~bash
 yum install -y bridge-utils
@@ -37,11 +39,11 @@ port no mac addr                is local?       ageing timer
   1     da:4a:2e:59:7d:8e       yes                0.00
 ~~~
 
-**查看 veth pair** 
+#### 查看 veth pair
 
 ~~~bash
 # 1、进入容器内，查看容器网卡配对的veth设备的id号
-cat /sys/class/net/eth0/iflink  #假设输出的是61
+cat /sys/class/net/eth0/iflink  # 假设输出的是61
 
 # 2、然后在宿主机上查看veth设备的id号，找到对应的veth设备
 ip link show  # 会找到一个编号为61的veth设备
@@ -75,7 +77,7 @@ docker run --network none --name my-nginx3 nginx
 
 ## container 网络
 
-新建容器不创建网络名称空间，与某个已经存在的容器共享网络。
+新建容器不创建自己的网络名称空间，与某个已经存在的容器共享网络空间。k8s 中启动一个 pod 时会先拉起一个 pause 容器，初始化网络环境等环境，然后再拉起业务容器与 pause 容器共享网络，这种方式就和 container 网络非常类似。
 
 ~~~bash
 docker run --network container:<容器名a> --name my-nginx4 nginx
@@ -121,14 +123,9 @@ docker run --network bridge --name my-nginx nginx
 
 
 
-### 默认 bridge 网络与自定义 bridge 网络的区别
+## 自定义 bridge
 
-- **默认 bridge 网络**：在默认的 `bridge` 网络中，容器之间只能通过 IP 地址通信，无法通过容器名称通信，因为默认 bridge 网络没有内置 DNS 服务。
-- **自定义 bridge 网络**：在自定义 bridge 网络中，Docker 提供了 DNS 服务，因此容器之间可以通过容器名称通信。
-
-
-
-新建自定义 bridge，并将两个容器挂在上面
+创建自定义 bridge 网络，并将两个容器挂在它上面。
 
 ```bash
 # 创建自定义 bridge 网络
@@ -143,16 +140,10 @@ docker run -d --name nginx2 --network my-network nginx
 
 
 
-## docker run --link 不推荐使用
+#### 默认 bridge 与自定义 bridge 网络的区别
 
-`docker run --link` 是 Docker 早期版本中用于实现容器之间通信的一种机制。它可以将一个容器的网络信息（如 IP 地址和端口）注入到另一个容器的环境变量和 `/etc/hosts` 文件中，从而实现容器之间的通信。但**容器之间是单向通信**。不过，**`--link` 是一个过时的功能**，在 Docker 的现代版本中，推荐使用**自定义网络**（如自定义 `bridge` 网络）来代替 `--link`。
-
-~~~bash
-docker run -d --name nginx1  nginx
-docker run -d --name nginx2 --link nginx1:mynginx1 nginx
-~~~
-
-`--link nginx1:mynginx1`：将 `nginx2` 链接到 `nginx1`，并为 `nginx1` 设置一个别名 `mynginx1`，这样做的结果是，在`nginx2` 可以使用容器名称 `nginx1` 或者 `mynginx1` ping 通过。但是在 `nginx1` 中无法使用容器名 `nginx1` ping 通
+- **默认 bridge 网络**：在默认的 `bridge` 网络中，容器之间只能通过 IP 地址通信，无法通过容器名称通信，因为默认 bridge 网络没有内置 DNS 服务。
+- **自定义 bridge 网络**：在自定义 bridge 网络中，Docker 提供了 DNS 服务，因此容器之间可以通过容器名称通信。
 
 
 
