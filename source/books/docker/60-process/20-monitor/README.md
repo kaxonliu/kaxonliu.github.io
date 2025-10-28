@@ -96,7 +96,7 @@ cpu1 3960750 356 963331 461315648 30362 0 1533 0 0 0
 
 容器的本质是进程，方法类似。
 
-运行容器后，找到容器 id，然后查看文件 `sys/fs/cgroup/cpu/system.slice/docker-<container_id>.scope/cpuacct.stat`，就可以看到
+运行容器后，找到容器 id，然后查看文件 `/sys/fs/cgroup/cpu/system.slice/docker-<container_id>.scope/cpuacct.stat`，就可以看到
 
 ~~~
 user 2313123
