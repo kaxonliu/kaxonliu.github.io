@@ -10,9 +10,9 @@
 
 某个用户进程对 cpu 的使用率 = 用户进程占用 cpu 时间（us + sy） / cpu 经历的这段总时间。
 
-- 进程对 cpu 的使用率为 100% 表示使用了1颗 CPU；200% 则表示使用 2颗CPU。
-- 如果只有4颗CPU，那么某个进程 cpu 使用率最大就是 400%。
-- 总结：cpu使用率反应的是 cpu 的利用情况。
+- 进程对 cpu 的使用率为 100% 表示使用了1颗 CPU；200% 则表示使用 2颗 CPU。
+- 如果只有4颗 CPU，那么某个进程 cpu 使用率最大就是 400%。
+- 总结：cpu 使用率反应的是 cpu 的利用情况。
 
 #### 平均负载 load average
 
@@ -64,7 +64,7 @@ HZ 为 100 代表 1s 内发生 100 次中断。一个 tick 具体时长就是 1/
 
 #### 统计进程对 cpu 的占用
 
-进程对cpu的利用率 = ((utime_2 – utime_1) + (stime_2 – stime_1)) / et * HZ
+进程对 cpu 的利用率 = ((utime_2 – utime_1) + (stime_2 – stime_1)) / et * HZ
 
 - et 为统计时间间隔。
 
@@ -96,7 +96,7 @@ cpu1 3960750 356 963331 461315648 30362 0 1533 0 0 0
 
 容器的本质是进程，方法类似。
 
-运行容器后，找到容器id，然后查看文件 `sys/fs/cgroup/cpu/system.slice/docker-ce-<container_id>.scope`，就可以看到
+运行容器后，找到容器 id，然后查看文件 `sys/fs/cgroup/cpu/system.slice/docker-<container_id>.scope/cpuacct.stat`，就可以看到
 
 ~~~
 user 2313123
