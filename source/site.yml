@@ -18,6 +18,8 @@ site:
       uri: /books/db/index.html
     - title: Docker
       uri: /books/docker/index.html
+    - title: K8S
+      uri: /books/k8s/index.html
     - title: 外出看看
       uri: /blogs/travel/index.html
   contact:
