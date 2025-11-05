@@ -639,7 +639,7 @@ kubectl -n kube-flannel get pods -o wide
 
 #### 5. 安装 kubectl 命令提示
 
-所有节点安装
+所有节点安装，node 节点的家目录可能没有 `./kube` 目录，没有的话手动创建。
 
 ~~~bash
 yum install bash-completion* -y
