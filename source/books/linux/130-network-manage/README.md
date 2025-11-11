@@ -267,7 +267,7 @@ PEERDNS=yes 　　
 
 
 
-### 使用 NetworkManager 服务配置IP地址
+### 使用 NetworkManager 服务配置 IP 地址
 
 在 Centos7.9 上可以使用 `NetworkManager` 服务管理网卡，具体管理使用命令 `nmcli`。当 `NetworkManager` 启用时可以使用，当这个服务停掉后，就无法使用 `nmcli` 命令。
 
@@ -359,7 +359,7 @@ nmcli conn add \
 nmcli con add type ethernet con-name "ens256" ifname ens256 ipv4.method auto
 ~~~
 
-#### 6. 激活链接
+#### 6. 激活连接
 
 ~~~bash
 nmcli conn up ens256
@@ -403,7 +403,7 @@ nmcli con del "ens256"
 
 
 
-## RockyLinux9.6配置IP地址
+## RockyLinux9.6 配置 IP 地址
 
 在RockyLinux9.6上已经不再使用 network 服务管理网卡接口了，只使用 NetworkManager 服务。配置文件也从 Centos7时代的 `/etc/sysconfig/network-scripts/ifcfg-ens*` 转为 `/etc/NetworkManager/system-connections/ens*.nmconnection`。
 
@@ -433,7 +433,7 @@ method=auto
 
 
 
-## Ubuntu24.04.3 LTS 配置IP地址
+## Ubuntu24.04.3 LTS 配置 IP 地址
 
 在 Ubuntu24中，**`systemd-networkd`** 是管理网络的首选方式之一，它是一个强大的系统级网络管理守护进程，它由 `systemd` 提供。它使用纯文本的 `.network`、`.netdev` 和 `.link` 文件进行配置，这些文件位于 `/etc/systemd/network/` 和 `/lib/systemd/network/` 目录。但是，除非你有特殊需求直接操作 `systemd-networkd`，否则通常**更推荐使用 Netplan** 来管理配置，因为它是发行版推荐的标准方式，能更好地处理与其他系统组件的集成。
 
@@ -452,7 +452,7 @@ sudo systemctl status systemd-resolved.service
 
 
 
-#### 2. 使用 netplan 配置ip
+#### 2. 使用 netplan 配置 ip
 
 使用命令 `netplan` 编辑目录 `/etc/netplan/` 下以 `yaml` 结尾的文件。编辑前先备份。配置静态ip需要把 `dhcp4` 的值修改为 `false`，同时提供 IP地址/网关/dns等信息。动态ip只需要把 `dhcp4` 的值修改为 `true` 即可。
 
@@ -537,11 +537,14 @@ Link 2 (ens160)
 
 ### Linux 开启路由转发功能
 
-**Linux 主机能转发数据包有两个条件：1本级被当作网关；2.本级开启了路由转发功能。**
+**Linux 主机能转发数据包有两个条件：**
+
+1. 本机被当作网关；
+2. 本机开启了路由转发功能。
 
 
 
-#### 1. 临时开启
+#### 1. 临时开启路由转发
 
 临时开启的方式，重启网络服务则失效。
 
@@ -553,7 +556,7 @@ echo 1 > /proc/sys/net/ipv4/ip_forward
 sysctl -w net.ipv4.ip_forward=1
 ~~~
 
-#### 2. 永久开启
+#### 2. 永久开启路由转发
 
 永久开启，需要写入配置文件。
 
@@ -582,15 +585,17 @@ sysctl -a | grep ip_forward
 
 ## 路由种类
 
-在 Linux 上可以使用 `route` 命令查看本机的路由规则，这个命令需要安装 `net-tools` 才能使用。路由表中可以看到三种类型的路由。分别是：主机路由、网络路由、默认路由。
+在 Linux 上可以使用 `route` 命令查看本机的路由规则，这个命令需要先安装 `net-tools` 才能使用。
+
+路由表中可以看到三种类型的路由。分别是：主机路由、网络路由、默认路由。
 
 #### 1. 主机路由
 
-主机路由指的就是转发给指定主机的路由规则，它的子网掩码是32位，因为精确到一个具体的主机，因此主机路由也被称为静态路由，它的优先级最高。
+主机路由指的就是转发给指定主机的路由规则，它的子网掩码是 32 位，因为精确到一个具体的主机，因此主机路由也被称为静态路由，它的优先级最高。
 
 #### 2. 网络路由
 
-网络路由指的是妆发给指定网络内的路由规则，它的子网掩码小于32位，优先级仅次于主机路由。
+网络路由指的是转发给指定网段的路由规则，它的子网掩码小于 32 位，优先级仅次于主机路由。
 
 #### 3. 默认路由
 
@@ -621,8 +626,8 @@ Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
 192.168.10.100  0.0.0.0         255.255.255.255 UH    0      0        0 ens161
 
 # Destination，目标网络或目标主机
-# Gateway，到达目标需要经过的网关。如果没有网关则显示为0.0.0.0
-# Genmask，和目标主机 ip配对使用的网络掩码
+# Gateway，到达目标需要经过的网关。如果没有网关则显示为 0.0.0.0
+# Genmask，和目标主机 ip 配对使用的网络掩码
 # Flags 参数，U表示路由up，该路由可用；H表示主机路由；G表示路由通向另一个网关
 # Metric，衡量距离，一般由于选择使用小的。
 # Use，路由被使用的次数
@@ -692,7 +697,17 @@ EOF
 >
 >注意：配置的 IP 地址必须可达
 
+#### 配置生效方式
+
 保存配置文件后，重启服务生效。
+
+```bash
+# 重启网络服务
+systemctl restart network
+
+# 或重启特定接口
+ifdown ens161 && ifup ens161
+```
 
 
 
