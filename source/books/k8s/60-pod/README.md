@@ -155,3 +155,34 @@ Kubelet 可以选择是否执行在容器上运行的两种探针执行和做出
 
 - **`livenessProbe`：**指示容器是否正在运行。如果存活探测失败，则 kubelet 会杀死容器，并且容器将受到其 [重启策略](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy) 的影响。如果容器不提供存活探针，则默认状态为 `Success`。
 - **`readinessProbe`：**指示容器是否准备好服务请求。如果就绪探测失败，端点控制器（Endpoint）将从与 Pod 匹配的所有 Service 的端点中删除该 Pod 的 IP 地址。初始延迟之前的就绪状态默认为 `Failure`。如果容器不提供就绪探针，则默认状态为 `Success`。
+
+
+
+
+
+## 通过 pid 找到 pod
+
+~~~bash
+# 在某个节点上，你发现某个pid异常，想找到他属于哪个pod
+# 1、顺着这个pid往上一路寻找他的父进程
+[root@node01 ~]# ps -elf |grep 3342 |grep -v grep
+4 S root        3342    3184  0  80   0 -   304 do_wai 12:13 ?        00:00:00 /bin/sh -c while true;do echo 111 >> /tmp/run.log;sleep 1;done
+0 S root        9338    3342  0  80   0 -   301 hrtime 12:23 ?        00:00:00 sleep 1
+[root@node01 ~]# 
+[root@node01 ~]# ps -elf |grep 3184|grep -v grep
+0 S root        3184       1  0  80   0 - 309050 futex_ 12:13 ?       00:00:00 /usr/bin/containerd-shim-runc-v2 -namespace k8s.io -id dac0137a48b0467c5767d70cd219cc0682488f067f3703b1f6ef11ad6c8220fa -address /run/containerd/containerd.sock
+4 S 65535       3215    3184  0  80   0 -   241 ia32_s 12:13 ?        00:00:00 /pause
+4 S root        3342    3184  0  80   0 -   304 do_wai 12:13 ?        00:00:00 /bin/sh -c while true;do echo 111 >> /tmp/run.log;sleep 1;done
+[root@node01 ~]# 
+[root@node01 ~]# 
+# 2、可以从上面的过滤中找到一个pod的id号：dac0137a48b0467c5767d70cd219cc0682488f067f3703b1f6ef11ad6c8220fa
+[root@node01 ~]# 
+[root@node01 ~]# 
+[root@node01 ~]# 
+# 3、执行下面的命令，可以找到对应的POD ID，你可以找到其对应的pod名字
+[root@node01 ~]# crictl ps   
+CONTAINER      IMAGE          CREATED         STATE    NAME     ATTEMPT   POD ID       POD
+
+0dd721dd6cf1d  a229b61a74acb  11 minutes ago  Running  nginx-test  0   dac0137a48b04   mynginx-d9dfc55bf-pbpn6
+~~~
+
