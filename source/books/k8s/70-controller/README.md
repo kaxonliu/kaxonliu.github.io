@@ -653,8 +653,6 @@ spec:
 		无头svc的域名----coredns解析-----》所关联pod的ip地址作为dns解析记录来返回
 ~~~
 
-
-
 创建临时 pod，在 pod 内测试有状态 pod 的域名
 
 ~~~bash
@@ -662,4 +660,27 @@ kubectl run test-nginx --image=nginx:latest --rm -it --restart=Never bash
 ~~~
 
 
+
+#### StatefulSet 内置的顺序控制
+
+使用 `podManagementPolicy` 控制 pod 启动顺序， 默认顺序行为。默认值是 `OrderedReady`。
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: "web"
+  replicas: 3
+  podManagementPolicy: OrderedReady  # 默认值
+```
+
+**默认行为**：
+
+- Pod 按顺序创建（web-0 → web-1 → web-2）
+- 前一个 Pod 完全 Ready 后，才创建下一个
+- 删除时按逆序进行（web-2 → web-1 → web-0）
+
+想要并发起 pod，设置 `podManagementPolicy: Parallel` ，并行启动，不等待前一个 Ready。
 
