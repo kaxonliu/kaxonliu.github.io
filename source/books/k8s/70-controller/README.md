@@ -520,3 +520,146 @@ spec:
 
 
 
+## statefulset
+
+StatefulSet：译为“有状态的集合”，k8s 内置的控制器，专门用于管理有状态的资源。有状态服务往往都会有自己的独特的状态维护需求，statefulse 无法满足所有场景，针对一些特定的场景还是需要开发自己的控制器来管理。
+
+~~~alert type=note
+状态就是数据 <br>
+有状态指的是：应用的运行要依赖之前的数据---》限制调度，pod 只能调度到之前状态存在的节点上才可以 <br>
+无状态指的是：应用的运行不需要依赖之前的数据--》对调度没有限制，pod 可以随意漂移到最合适的节点
+~~~
+
+应用如果对状态维护没有特殊要求，只有一些常规需求如下，就可以用内置 statefulset 控制器
+
+- 稳定的次序：对于 N 个副本的 StatefulSet，每个 Pod 名字后缀从 0-N，按次序启停。
+- 稳定的网络标识（网络标识即dns域名）：每个 pod 都有一个固定的域名（FQDN），pod 的 ip 地址随意变化，但这个域名不变。
+- 稳定的存储：通过 VolumeClaimTemplate 为每个 Pod 创建一个 PV。删除、减少副本，不会删除相关的卷。
+
+
+
+#### statefulset 的两个重要组成部分
+
+Headless Service。可以使得每个 pod 有一个固定 FQDN 名字，上游的访问可以直接访问该域名来访问 pod，不需要 svc 做流量转发、没有负载均衡的效果。
+
+volumeClaimTemplates。创建 pvc 的模版，每个 pod 副本都会创建出一个自己独有的 pvc，不与其他 pod 共享。
+
+
+
+#### 无头服务
+
+pod名字固定+创建一个无头服务，就可以让每个pod拥有一个固定的fqdn域名（coredns负责解析）
+
+~~~
+fqdn 域名格式：
+$(podname).(headless server name).namespace.svc.cluster.local
+~~~
+
+编写 statefulset 配置清单，配置无头服务的名字 `serviceName`，配置 PVC 模板 `volumeClaimTemplates`
+
+~~~yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: "nginx"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:	# 为每个 Pod 动态创建 PVC
+  - metadata:
+      name: www
+    spec:
+      accessModes:
+      - ReadWriteMany
+      resources:
+        requests:
+          storage: 1Gi
+~~~
+
+创建无头服务的配置清单
+
+~~~yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx		# 无头服务的名字在 StatefulSet 中被使用 serviceName 字段引用
+  labels:
+    app: nginx
+spec:
+  ports:
+  - port: 80
+    name: web
+    targetPort: 80
+  clusterIP: None		# 无头服务必须设置clusterIP为None
+  selector:
+    app: nginx
+~~~
+
+手动创建 pv
+
+~~~yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-001
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/data/pv-001"
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-002
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/data/pv-002"
+~~~
+
+
+
+#### 普通 svc 和 无头 svc 
+
+~~~bash
+基于普通svc的访问流程
+		普通svc的域名----coredns解析-----》svc的cluster ip----ipvs转发-》pod的endpoint
+		
+基于无头svc的访问流程
+		无头svc的域名----coredns解析-----》所关联pod的ip地址作为dns解析记录来返回
+~~~
+
+
+
+创建临时 pod，在 pod 内测试有状态 pod 的域名
+
+~~~bash
+kubectl run test-nginx --image=nginx:latest --rm -it --restart=Never bash
+~~~
+
+
+
