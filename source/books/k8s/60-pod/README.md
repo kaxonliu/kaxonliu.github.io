@@ -186,3 +186,27 @@ CONTAINER      IMAGE          CREATED         STATE    NAME     ATTEMPT   POD ID
 0dd721dd6cf1d  a229b61a74acb  11 minutes ago  Running  nginx-test  0   dac0137a48b04   mynginx-d9dfc55bf-pbpn6
 ~~~
 
+
+
+## 镜像拉取策略
+
+在 Kubernetes 中，**容器镜像拉取策略（imagePullPolicy）** 只有以下三种：
+
+- `Always`。**每次**创建或重启 Pod 时，**总是尝试拉取镜像**。**即使本地已存在**，也会向仓库发起请求。
+- `IfNotPresent`。**仅当本地不存在该镜像时**，才从仓库拉取。
+- `Never`。只使用本地已存在的镜像，如果本地没有，Pod 会启动失败，报错 `ErrImageNeverPull`。
+
+~~~yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx:latest
+    imagePullPolicy: Always
+~~~
+
+
+
