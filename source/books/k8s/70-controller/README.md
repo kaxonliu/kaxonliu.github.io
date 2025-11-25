@@ -684,3 +684,297 @@ spec:
 
 想要并发起 pod，设置 `podManagementPolicy: Parallel` ，并行启动，不等待前一个 Ready。
 
+
+
+
+
+## job
+
+Kubernetes 的 `Job` 控制器用于创建一个或多个 Pod，并确保指定数量的 Pod 成功终止。当一个 Pod 成功完成（即容器以退出码 0 结束），Job 就认为是成功的。pod 正常执行完毕后的状态为 completed。
+
+它与 Deployment/ReplicaSet 的主要区别：
+
+- Deployment/ReplicaSet：用于管理持续运行的、永远不会结束的应用（如 Web 服务器）。
+- Job：用于管理运行到完成（Run to Completion）的离散型任务（如批处理作业、数据备份、计算任务等）。
+
+~~~yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hello-job
+spec:
+  # 指定需要成功运行的 Pod 数量，默认为 1
+  completions: 10
+  # 指定并行运行的 Pod 数量，默认为 1
+  parallelism: 3
+  # Job 的超时时间，超过此时间 Job 会被标记为失败。
+  # activeDeadlineSeconds: 30
+  # pod 重启次数，# 最多重试 3 次（即总共运行 4 次： 1次初始 + 3次重试）
+  # backoffLimit: 3
+  
+  # Job 在完成后的指定秒数会被自动删除。
+  # ttlSecondsAfterFinished: 60
+
+  # 模板，用于创建 Pod
+  template:
+    spec:
+    	restartPolicy: OnFailure
+      containers:
+      - name: busybox-container
+        image: nginx:latest
+        imagePullPolicy: IfNotPresent
+        # Job 的 Pod 必须设置 restartPolicy 为 Never 或 OnFailure
+        command:
+        - "bin/sh"
+        - "-c"
+        - "i=0;while true; do echo $i; sleep 1;let i++;done"
+~~~
+
+#### 查看 job 和 pod
+
+~~~bash
+kubectl get job
+kubectl get pod 
+kubectl get pod --selector=job-name=hello-job
+~~~
+
+
+
+####  重启策略
+
+Job 的 Pod 必须设置 restartPolicy 为 Never 或 OnFailure。
+
+- OnFailure：表示当 pod 运行失败后，会重启该 pod 本身（不会创建新pod），最多重启次数取决于 `backoffLimit`。
+- Never。当 pod 运行失败后，不会重启 pod 本身了，但是 job 控制器会创建新的 pod，最多新建 pod 的数量取决于 `backoffLimit` 。
+
+Job 控制器通过 `spec.backoffLimit` 字段来控制重试次数。它默认为 6。失败后的重试间隔会指数级增加（10s, 20s, 40s ...），最大间隔为 6 分钟。
+
+
+
+#### 任务超时设置
+
+如果 job 一直处于 running 状态，无法 complete，一旦超过超时时间，就会被判定为 failed。设置超时时间`spec.activeDeadlineSeconds`
+
+
+
+#### 并行 job
+
+~~~yaml
+kind: Job
+metadata:
+  name: parallel-job
+spec:
+  completions: 10   # 总共需要完成 10 个任务
+  parallelism: 3    # 最多同时运行 3 个 Pod
+~~~
+
+这个 Job 会确保有 10 个 Pod 成功退出，并且任何时候最多只有 3 个 Pod 在同时运行。
+
+
+
+#### 自动清理完成的 Job
+
+完成的 Job（无论是成功还是失败）默认会一直保留在系统中，这可能会占用 API Server 的资源。为了自动清理，有两个主要方法：
+
+##### 方法 1： 使用 `ttlSecondsAfterFinished` (Kubernetes v1.21+ 稳定)
+
+这是推荐的方式。Job 在完成后的指定秒数会被自动删除
+
+~~~yaml
+# ttl-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ttl-job
+spec:
+  ttlSecondsAfterFinished: 100 # 完成后 100 秒自动删除
+  template:
+    spec:
+      containers:
+      - name: sleeper
+        image: busybox
+        command: ["sh", "-c", "echo 'Done!'; sleep 5"]
+      restartPolicy: OnFailure
+~~~
+
+##### 方法 2： 使用 CronJob 的并发策略
+
+如果你的 Job 是由 CronJob 创建的，可以在 CronJob 的 Spec 中设置 `.spec.concurrencyPolicy` 为 `Replace` 或 `Forbid`，并结合历史记录限制来管理旧 Job。
+
+
+
+
+
+## CronJob
+
+如果你想定期周期性管理 k8s 中的资源，那就使用 cronjob，就是在 job 一次性任务的基础上加了一个时间调度。
+
+~~~alert type=note
+cronjob控制器资源-------------》job控制器资源-------》启动pod
+~~~
+
+>Cronjob 设置计划任务的方式和系统级别的计划任务是一样的。
+>
+>~~~bash
+># ┌────────── 分钟 (0 - 59)
+># │ ┌──────── 小时 (0 - 23)
+># │ │ ┌────── 日 (1 - 31)
+># │ │ │ ┌──── 月 (1 - 12)
+># │ │ │ │ ┌── 星期 (0 - 7，0 和 7 都代表周日)
+># │ │ │ │ │
+># * * * * * <user-name> <要执行的命令>
+>~~~
+
+#### 主要参数
+
+~~~yaml
+# complete-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: complete-cronjob
+  namespace: default
+spec:
+  # 调度时间表（必需）
+  schedule: "0 3 * * *"  # 每天凌晨3点执行
+  
+  # 启动截止时间（秒）
+  startingDeadlineSeconds: 600  # 如果错过调度时间，10分钟内仍会启动
+  
+  # 并发策略
+  concurrencyPolicy: Forbid  # 禁止并发执行
+  
+  # 成功 Job 历史记录保留数量
+  successfulJobsHistoryLimit: 3
+  
+  # 失败 Job 历史记录保留数量  
+  failedJobsHistoryLimit: 1
+  
+  # 是否挂起 CronJob
+  suspend: false  # true 表示暂停调度
+  
+  # Job 模板（必需）
+  jobTemplate:
+    spec:
+      # Job 级别的配置
+      activeDeadlineSeconds: 3600  # Job 最多运行1小时
+      backoffLimit: 2  # 失败重试次数
+      
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: report-generator
+            image: busybox
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "开始生成日报..."
+              date
+              echo "报告生成时间: $(date)" > /tmp/report.txt
+              echo "生成完成"
+~~~
+
+
+
+#### 并发策略
+
+CronJob 有三种并发策略，通过 `concurrencyPolicy` 字段指定：
+
+- Allow。默认值。允许并发 Job 执行。如果一个任务还没有结束，而下一次调度时间到了，新的任务会直接启动，新建另一个 Job
+- Forbid。不允许并发执行；如果新 Job 的执行时间到了而老 Job 没有执行完，CronJob 会忽略新 Job 的执行即新 job 不会启动。适用于只允许一个任务实例运行的场景。
+- Replace。如果新 Job 的执行时间到了而老 Job 没有执行完，那么老的会被终止 Terminating 掉，CronJob 会用新 Job 替换当前正在运行的 Job。
+
+~~~yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: my-cronjob
+spec:
+  schedule: "*/1 * * * *"  # 每1分钟执行一次，但每次pod的执行任务故意超过1分钟来验证允许并发
+  concurrencyPolicy: Allow	# 并发策略
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: my-container
+            image: busybox
+            command: ["sh","-c","for i in `seq 1 120`;do echo $i;sleep 1;done"]
+          restartPolicy: OnFailure
+~~~
+
+
+
+#### 历史记录管理
+
+CronJob 会自动保留一定数量的历史 Job 记录
+
+~~~yaml
+successfulJobsHistoryLimit: 3  # 保留最近3个成功Job记录，默认值 3
+failedJobsHistoryLimit: 1      # 保留最近1个失败Job记录，默认值 1
+~~~
+
+手动清理
+
+~~~bash
+# 手动清理已完成的 Job
+kubectl delete jobs --field-selector status.successful=1
+
+# 查看所有 Job（包括已完成的）
+kubectl get jobs --show-all
+~~~
+
+#### 常用命令
+
+~~~bash
+# 查看所有 CronJob
+kubectl get cronjobs --all-namespaces
+
+# 查看特定 CronJob 详情
+kubectl describe cronjob <cronjob-name>
+
+# 查看 CronJob 创建的 Job
+kubectl get jobs --selector=job-name=<cronjob-prefix>
+
+# 手动触发 CronJob 执行
+kubectl create job --from=cronjob/<cronjob-name> manual-$(date +%s)
+
+# 暂停 CronJob
+kubectl patch cronjob <cronjob-name> -p '{"spec":{"suspend":true}}'
+
+# 恢复 CronJob  
+kubectl patch cronjob <cronjob-name> -p '{"spec":{"suspend":false}}'
+
+# 删除 CronJob（会删除相关的 Job）
+kubectl delete cronjob <cronjob-name>
+~~~
+
+
+
+## HPA
+
+HPA（Horizontal Pod Autoscaler）是 Kubernetes 中用于**自动水平扩展 Pod 数量**的控制器。它根据监控指标（如 CPU、内存使用率或自定义指标）自动调整 Deployment、ReplicaSet 或 StatefulSet 的 Pod 副本数量。
+
+**核心特性：**
+
+- 基于 CPU/内存使用率自动扩缩容
+- 支持自定义指标和外部指标
+- 可配置扩缩容阈值和行为
+- 与 Metrics Server 集成
+
+~~~alert type=note
+HPA Controller → 查询 Metrics API → 获取当前指标值 → 计算所需副本数 → 调整 Deployment/ReplicaSet
+~~~
+
+HPA 控制器资源可以从一系列的 API 中获取 pod 的运行指标，然后通过自己内部计算算法来计算出应该扩容/缩容的副本数。
+
+- 常规指标。一般由 metrics-server 提供例如cpu、内存指标。
+- 自定义指标。自定义指标通常是从 Kubernetes 集群内部的应用程序中收集的。这些指标可以通过 Prometheus、Metrics Server 或其他监控工具采集，通常与特定应用程序或 Pod 的性能相关。
+- 外部指标。外部指标允许 HPA 根据 Kubernetes 集群外部的服务指标来进行扩展。通常是由外部的监控系统或服务提供的。 这些指标不依赖于 Kubernetes 内部的资源，可能包括外部服务的响应时间、消息队列的长度、数据库的请求数等。
+
+>HPA v1 版，需要借助 Heapster 获取 CPU 和内存指标。
+>
+>HPA v2 版，需要借助 Metrics Server 获取需要的指标。
+
