@@ -978,3 +978,354 @@ HPA 控制器资源可以从一系列的 API 中获取 pod 的运行指标，然
 >
 >HPA v2 版，需要借助 Metrics Server 获取需要的指标。
 
+
+
+#### HPA 扩缩容
+
+当实际指标超过预期指标时，启动扩容，有扩容防抖机制。
+
+当实际指标低于预期指标时，启动缩容，冷却时间等待 5 分钟 → 开始缩容。
+
+~~~bash
+# 公式
+期望副本数 = ceil[当前副本数 × (当前指标值 / 期望指标值)]
+~~~
+
+>假设配置：
+>
+>- 目标 CPU 使用率：50%
+>- 当前副本数：3 个 Pod
+>- 实际 CPU 使用率：75%
+>
+>```bash
+># 计算过程
+>期望副本数 = ceil[3 × (75 / 50)]
+>          = ceil[3 × 1.5]
+>          = ceil[4.5]
+>          = 5
+>```
+>
+>**结果：** HPA 会将副本数从 3 扩展到 5。
+>
+>**强调**：hpa 可能有多个，以算出来最大的那一个为准。
+
+
+
+#### 安装 metrics server
+
+安装 metrics server 非常简单，但是要有两个动作：
+
+1. 修改 api-server 配置，允许使用外部监控数据的接口。
+2. 使用 yaml 文件部署 metrics server 之前修改镜像源。
+
+
+
+##### 1. 修改 api-server 配置
+
+修改每个 API Server 的 kube-apiserver.yaml 配置开启 Aggregator Routing，增加配置项 `--enable-aggregator-routing=true`。修改 manifests 配置后 API Server 会自动重启生效。
+~~~yaml
+[root@k8s-master-01 ~]# cat /etc/kubernetes/manifests/kube-apiserver.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    kubeadm.kubernetes.io/kube-apiserver.advertise-address.endpoint: 172.16.143.22:6443
+  creationTimestamp: null
+  labels:
+    component: kube-apiserver
+    tier: control-plane
+  name: kube-apiserver
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-apiserver
+    - --enable-aggregator-routing=true		# 增加这一行配置
+    - --advertise-address=172.16.143.22
+~~~
+
+##### 2. 下载 metrics server 的 components.yaml 文件
+
+~~~bash
+wget https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.1/components.yaml
+~~~
+
+
+
+##### 3. 修改 components.yaml 文件
+
+之前部署 k8s 集群用的自签名证书，metrics-server 直接请求 kubelet 接口会证书校验失败，因此 deployment 中增加`- --kubelet-insecure-tls`参数。
+
+另外镜像原先在 registry.k8s.io，国内下载不方便，修改成了国内镜像仓库地址。
+
+~~~bash
+[root@k8s-master-01 k8s]# cat components.yaml | grep Deployment -A 30
+kind: Deployment
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: metrics-server
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        k8s-app: metrics-server
+    spec:
+      containers:
+      - args:
+        - --cert-dir=/tmp
+        - --secure-port=10250
+        - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+        - --kubelet-use-node-status-port
+        - --metric-resolution=15s
+        - --kubelet-insecure-tls		# 新增参数
+        # 注释旧的镜像地址，使用国内的镜像地址
+        # image: registry.k8s.io/metrics-server/metrics-server:v0.7.1
+        image: registry.cn-hangzhou.aliyuncs.com/google_containers/metrics-server:v0.7.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /livez
+~~~
+
+
+
+##### 4. 安装 metrics-server 前
+
+安装之前无法使用 top 命令
+
+~~~bash
+[root@k8s-master-01 k8s]# kubectl top nodes
+error: Metrics API not available
+~~~
+
+
+
+##### 5. 安装 metrics-server
+
+~~~bash
+kubectl apply -f components.yaml
+~~~
+
+查看 pod，等待一会 pod 的状态变成 ready
+
+~~~bash
+[root@k8s-master-01 k8s]# kubectl  -n kube-system  get pods | grep metrics-server
+metrics-server-85bc58ccff-6hgj8         1/1     Running   0             3m2s
+~~~
+
+使用 top 命令。获取节点资源使用数据。
+
+~~~bash
+[root@k8s-master-01 k8s]# kubectl top nodes
+NAME            CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+k8s-master-01   233m         11%    1168Mi          65%       
+k8s-node-01     100m         5%     873Mi           49%       
+k8s-node-02     122m         6%     880Mi           49%       
+~~~
+
+使用 top 命令。查看 pod 的资源使用情况。
+
+~~~bash
+[root@k8s-master-01 ~]# kubectl get pods
+NAME                                READY   STATUS    RESTARTS   AGE
+nginx-deployment-595cc44f8b-2stwp   1/1     Running   0          11s
+nginx-deployment-595cc44f8b-pc65d   1/1     Running   0          11s
+nginx-deployment-595cc44f8b-rxbt6   1/1     Running   0          11s
+nginx-deployment-595cc44f8b-sw7b6   1/1     Running   0          11s
+nginx-deployment-595cc44f8b-xxqjj   1/1     Running   0          11s
+[root@k8s-master-01 ~]# 
+[root@k8s-master-01 ~]# 
+[root@k8s-master-01 ~]# 
+[root@k8s-master-01 ~]# kubectl top pods
+NAME                                CPU(cores)   MEMORY(bytes)   
+nginx-deployment-595cc44f8b-2stwp   6m           3Mi             
+nginx-deployment-595cc44f8b-pc65d   7m           3Mi             
+nginx-deployment-595cc44f8b-rxbt6   8m           4Mi             
+nginx-deployment-595cc44f8b-sw7b6   6m           3Mi             
+nginx-deployment-595cc44f8b-xxqjj   5m           3Mi             
+[root@k8s-master-01 ~]# 
+[root@k8s-master-01 ~]# kubectl top pods nginx-deployment-595cc44f8b-2stwp
+NAME                                CPU(cores)   MEMORY(bytes)   
+nginx-deployment-595cc44f8b-2stwp   6m           3Mi             
+~~~
+
+
+
+#### 使用 HPA
+
+##### 1. 创建基于 cpu 的 HPA 对象
+
+准备测试 pod。注意，一定要配置 resources.requests
+
+~~~yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpa-demo
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: 50Mi # 内部也一并加上吧，虽然此时用不到
+              cpu: 50m 	# 添加cpu即可
+~~~
+
+使用命令的方式创建 hpa 资源。指定 deployment 资源的名字，指定目标 cpu 的使用百分比，以及自动调度后 pod 数量的范围。
+
+~~~bash
+kubectl autoscale deployment hpa-demo --cpu-percent=10 --min=1 --max=10
+~~~
+
+创建 hpa 资源
+
+~~~bash
+[root@k8s-master-01 ~]# kubectl get hpa
+NAME       REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+hpa-demo   Deployment/hpa-demo   cpu: 0%/10%   1         10        1          44s
+~~~
+
+创建测试自动扩缩的 svc。然后使用压测工具访问 svc 
+
+~~~yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  selector:
+    app: nginx
+  ports:
+  - port: 8080    
+    protocol: TCP 
+    targetPort: 80 
+  type: ClusterIP 
+~~~
+
+查看 svc
+
+~~~bash
+[root@k8s-master-01 ~]# kubectl get svc nginx
+NAME    TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+nginx   ClusterIP   10.102.61.209   <none>        8080/TCP   44s
+~~~
+
+压力测试
+
+~~~bash
+kubectl run -it --image busybox test-hpa --restart=Never --rm /bin/sh
+/ # while true; do wget -q -O- http://nginx.default.svc.cluster.local:8080; done
+~~~
+
+
+
+补充：生成 hpa 的配置清单
+
+~~~yaml
+[root@k8s-master-01 ~]# kubectl autoscale deployment hpa-nginx --cpu-percent=10 --min=1 --max=10 --dry-run=client -o yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  creationTimestamp: null
+  name: hpa-nginx
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpa-nginx
+  targetCPUUtilizationPercentage: 10
+status:
+  currentReplicas: 0
+  desiredReplicas: 0
+~~~
+
+
+
+练习 cpu（完整版）
+
+~~~yaml
+apiVersion: autoscaling/v2   # 注意这里使用的 `apiVersion` 是 `autoscaling/v2`
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-nginx
+spec:
+  maxReplicas: 10 # 最大扩容到10个节点（pod）
+  minReplicas: 1 # 最小扩容1个节点（pod）
+  metrics:		# metrics 属性里面指定的是内存的配置
+  - resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 40 # CPU 平局资源使用率达到40%就开始扩容，低于40%就是缩容
+        # 设置内存
+        # AverageValue：40
+    type: Resource
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpa-nginx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hpa-nginx
+spec:
+  type: NodePort
+  ports:
+  - name: "http"
+    port: 80
+    targetPort: 80
+    nodePort: 30080
+  selector:
+    service: hpa-nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpa-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: hpa-nginx
+  template:
+    metadata:
+      labels:
+        service: hpa-nginx
+    spec:
+      containers:
+      - name: hpa-nginx
+        image: nginx:latest
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 200Mi
+~~~
+
