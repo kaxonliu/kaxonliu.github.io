@@ -65,3 +65,66 @@
 | 显示POD列表 | 无     | 无               | `crictl pods`               | 无      |
 | 查看POD详情 | 无     | 无               | `crictl inspectp pod的id号` | 无      |
 
+
+
+## 配置镜像加速
+
+给 containerd 配置加速，建议修改配置文件 `/etc/containerd/config.toml` 文件，在该文件中指定 `config_path=/etc/containerd/certs.d`，在这个文件件中编写镜像加速的配置。
+
+~~~toml
+[root@k8s-master-01 certs.d]# cat docker.io/hosts.toml
+server = "https://docker.io"
+[host."https://p...d.mirror.aliyuncs.com"]
+capabilities = ["pull", "resolve"]
+[host."https://xxx.com"]
+capabilities = ["pull", "resolve"]
+~~~
+
+比如，为 docker.io 配置镜像加速，则新建 docker.io 文件夹，文件夹中新建 hosts.toml 文件，其中按照上述格式配置一个或多个加速地址。为其他镜像仓库设置加速的方式类似。
+
+
+
+## 安装 nerdctl
+
+~~~bash
+# 下载
+wget https://github.com/containerd/nerdctl/releases/download/v1.7.6/nerdctl-1.7.6-linux-amd64.tar.gz
+
+# 创建文件件
+mkdir -p /usr/local/containerd/bin/
+
+# 解压
+tar -zxvf nerdctl-1.7.6-linux-amd64.tar.gz nerdctl
+
+# 移动命令文件
+mv nerdctl /usr/local/containerd/bin/
+
+# 软连接
+ln -s /usr/local/containerd/bin/nerdctl /usr/local/bin/nerdctl
+
+# 验证
+nerdctl version
+~~~
+
+
+
+安装后如果有警告，提示 buildkit 未安装，可以安装 buildkit 解决警告。
+
+~~~bash
+# 安装 buildkit
+wget https://github.com/moby/buildkit/releases/download/v0.13.2/buildkit-v0.13.2.linux-amd64.tar.gz
+
+tar -xzvf buildkit-v0.13.2.linux-amd64.tar.gz
+
+mkdir -p /usr/local/buildctl
+mv bin /usr/local/buildctl
+
+cat >> /etc/profile << "EOF"
+export PATH=/usr/local/buildctl/bin:$PATH
+EOF
+
+source /etc/profie
+~~~
+
+
+

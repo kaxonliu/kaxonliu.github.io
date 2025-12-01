@@ -255,3 +255,54 @@ kuberctl get 资源类型 资源 --show-labels
 kubectl label 资源类型 资源 key-
 ~~~
 
+
+
+## 通过 pid 找到 pod
+
+~~~bash
+# 在某个节点上，你发现某个pid异常，想找到他属于哪个pod
+# 1、顺着这个pid往上一路寻找他的父进程
+[root@node01 ~]# ps -elf |grep 3342 |grep -v grep
+4 S root        3342    3184  0  80   0 -   304 do_wai 12:13 ?        00:00:00 /bin/sh -c while true;do echo 111 >> /tmp/run.log;sleep 1;done
+0 S root        9338    3342  0  80   0 -   301 hrtime 12:23 ?        00:00:00 sleep 1
+[root@node01 ~]# 
+[root@node01 ~]# ps -elf |grep 3184|grep -v grep
+0 S root        3184       1  0  80   0 - 309050 futex_ 12:13 ?       00:00:00 /usr/bin/containerd-shim-runc-v2 -namespace k8s.io -id dac0137a48b0467c5767d70cd219cc0682488f067f3703b1f6ef11ad6c8220fa -address /run/containerd/containerd.sock
+4 S 65535       3215    3184  0  80   0 -   241 ia32_s 12:13 ?        00:00:00 /pause
+4 S root        3342    3184  0  80   0 -   304 do_wai 12:13 ?        00:00:00 /bin/sh -c while true;do echo 111 >> /tmp/run.log;sleep 1;done
+[root@node01 ~]# 
+[root@node01 ~]# 
+# 2、可以从上面的过滤中找到一个pod的id号：dac0137a48b0467c5767d70cd219cc0682488f067f3703b1f6ef11ad6c8220fa
+[root@node01 ~]# 
+[root@node01 ~]# 
+[root@node01 ~]# 
+# 3、执行下面的命令，可以找到对应的POD ID，你可以找到其对应的pod名字
+[root@node01 ~]# crictl ps   
+CONTAINER      IMAGE          CREATED         STATE    NAME     ATTEMPT   POD ID       POD
+
+0dd721dd6cf1d  a229b61a74acb  11 minutes ago  Running  nginx-test  0   dac0137a48b04   mynginx-d9dfc55bf-pbpn6
+~~~
+
+
+
+## 镜像拉取策略
+
+在 Kubernetes 中，**容器镜像拉取策略（imagePullPolicy）** 只有以下三种：
+
+- `Always`。**每次**创建或重启 Pod 时，**总是尝试拉取镜像**。**即使本地已存在**，也会向仓库发起请求。
+- `IfNotPresent`。**仅当本地不存在该镜像时**，才从仓库拉取。
+- `Never`。只使用本地已存在的镜像，如果本地没有，Pod 会启动失败，报错 `ErrImageNeverPull`。
+
+~~~yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx:latest
+    imagePullPolicy: Always
+~~~
+
+
