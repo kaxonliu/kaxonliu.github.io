@@ -155,3 +155,103 @@ Kubelet 可以选择是否执行在容器上运行的两种探针执行和做出
 
 - **`livenessProbe`：**指示容器是否正在运行。如果存活探测失败，则 kubelet 会杀死容器，并且容器将受到其 [重启策略](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy) 的影响。如果容器不提供存活探针，则默认状态为 `Success`。
 - **`readinessProbe`：**指示容器是否准备好服务请求。如果就绪探测失败，端点控制器（Endpoint）将从与 Pod 匹配的所有 Service 的端点中删除该 Pod 的 IP 地址。初始延迟之前的就绪状态默认为 `Failure`。如果容器不提供就绪探针，则默认状态为 `Success`。
+
+
+
+## 启动探针 startupProbe
+
+startupProbe：用于启动场景的检测，
+
+- 该探针检测通过/成功之后才会运行后面探针。
+- 一旦该探针通过则不会重复执行该探针，重复执行的是后两个探针。
+
+
+
+## 资源申请与限制
+
+#### requests 和 limits 的区别
+
+- requests 预选阶段的参考指标，并没有实际占住资源，有可能用超有可能不足。
+- limits 底层会修改目标节点的 cgroup 参数，做实际的限制。
+
+~~~alert type=note
+可压缩资源。例如cpu，达到limits上限之后只会限频，不会杀掉pod。不可压缩资源：例如内存、磁盘，达到limits上限之后pod会干掉，例如内存超过限制，则触发k8s级别的OOM。
+~~~
+
+具体的资源指标
+
+~~~yaml
+ resources:
+     requests:
+         cpu: "500m"                          # 请求 0.5 核 CPU
+         memory: "256Mi"                      # 请求 256 MiB 内存
+         ephemeral-storage: "1Gi"             # 请求 1 GiB 临时存储,非持久化数据
+         nvidia.com/gpu: "1"                  # 请求 1 个 GPU             
+         hugepages-2Mi: "64Mi"                # 请求 64 MiB 大页内存,容器可以使用大页内存
+         example.com/special-resource: "2"    # 请求 2 个自定义扩展资源
+         # 允许你为节点上安装的特殊硬件或软件资源
+         #（例如特殊硬盘）定义自定义资源类型。
+											 #你可以在容器中指定这些资源的请求和限制
+	  limits:
+		cpu: "1"                             # 限制最多使用 1 核 CPU
+		memory: "512Mi"                      # 限制最多使用 512 MiB 内存---》触发OOM
+		ephemeral-storage: "2Gi"             # 限制最多使用 2 GiB 临时存储
+		nvidia.com/gpu: "1"                  # 限制最多使用 1 个 GPU
+		hugepages-2Mi: "128Mi"               # 限制最多使用 128 MiB 大页内存
+		example.com/special-resource: "4"    # 限制最多使用 4 个自定义扩展资源
+~~~
+
+考虑initContainers与Containers包含多个容器的情况下，k8s如何调度
+
+（1）找出 initContainers 多个容器中对资源需求requests最大的那一个--》得到一个值假设为x
+（2）求出Containers下多个容器中对资源需求requests的综合--》得到一个值假设为y
+（3）k8s会取x与y中较大的那一个作为预选阶段的筛选依据，确保pod被调度某个节点上之后
+无论是initContainer还是业务Containers容器都有足够的剩余资源来确保拉起.
+
+
+
+## 服务的质量等级（Qos）
+
+当某个节点的资源不足时，k8s会把该节点的pod进行驱逐，（pod的状态evicted 驱逐）
+驱逐时会按照pod的Qos质量等级进行驱逐，质量等级越低的会成为被驱逐的目标。
+按照优先级从高到低的顺序排列：
+
+- Guranteed（完全可靠的）。pod中的所有容器对所有资源类型（cpu与内存）都定义了Limits与requests，且二者值相等、且大于0
+- Burstable(不稳定的)。一个pod既不是Guranteed级也不是BestEffort级，那就是Burstable级.一句话概括：设置了requests或limits，但是存在不一致的情况
+- BestEffort(尽最大努力)。pod中的所有容器都未定义资源配置（Requests与Limits都未定义），那么该pod的Qos级别就是BestEffort。
+
+## 静态Pod
+
+静态pod指的是由kubelet直接管理的pod，相当于一种系统服务。特点如下：
+
+- 静态pod是由kubelet进行管理的，静态pod的创建请求不会发给Master节点的API Server进行管理，不会被任何控制器Deployment或者DaemonSet进行关联。
+- 静态pod，它由自己节点上的kubelet进程自己来监控，kubelet无法对其进行健康检测，但pod崩溃时kubelet会重启该静态pod。
+- 静态pod始终与某个Node节点的kubelet绑定，即始终运行在同一个节点，不会被调度到其他节点上。
+- 静态的pod的状态可以查看到，无法彻底删除静态（删掉就会自动被kubelet拉起，除非删掉它的yaml文件）
+
+
+
+## 标签
+
+标签就是为了让一个资源与另外一种资源的建立关联，用来筛选资源的一种机制。
+
+打标签有两种方式，
+
+- 在 yaml 文件种指定。
+- 使用 kubectl 设置 `kubectl label 资源类型 资源 key-vakue`
+
+查看某个资源的标签
+
+~~~bash
+kuberctl get 资源类型 资源 --show-labels
+~~~
+
+删除标签的两种方式：
+
+- 编辑 yaml 文件删除
+- 使用 kubectl 删除 
+
+~~~bash
+kubectl label 资源类型 资源 key-
+~~~
+
