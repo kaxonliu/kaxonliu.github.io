@@ -1,6 +1,6 @@
 # service
 
-service 是一种智能负载均衡器，用来代理pod的服务的，解决 Pod 动态变化的访问问题。
+service 是一种智能负载均衡器，<font style="color:red">svc 是四层负载均衡</font>，用来代理 pod 的服务的，解决 Pod 动态变化的访问问题。
 
 解决的问题：
 
@@ -9,6 +9,8 @@ service 是一种智能负载均衡器，用来代理pod的服务的，解决 Po
 - 为应用提供稳定的访问入口。
 
 svc 通过标签来选中被管理的 pod，能够感知到 pod 的副本变化，动态感知 pod 的 ip 地址变化、pod 内服务的变化（就绪探针检测成功加入 endpoints，检测失败移除 endpoints）。
+
+
 
 ## svc 负载均衡模式
 
