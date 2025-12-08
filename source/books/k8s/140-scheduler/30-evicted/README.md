@@ -199,7 +199,22 @@ systemctl daemon-reload
 systemctl restart kubelet
 ~~~
 
+#### Pod驱逐流程
 
+当资源使用情况触发了驱逐条件时，kubelet会启动一个任务去轮流停止运行中的pod，直到资源使用状 况恢复到阈值以下。
+
+以硬驱逐为例，整体流程是：
+
+- 每隔一段时间从kubelet内部的cadvisor组件中获取资源使用情况，和定义的阀值进行对比
+~~~bash
+在 kubelet 中 --node-status-update-frequency 参数来定义获取及上报的频率，默认为10s
+~~~
+- 从运行中的pod里按QoS策略优先级进行驱逐。当资源紧缺时，驱逐pod的优先级大体为 ： BestEffort > Burstable > Guaranteed ，这是大前提。详细如下：总体规则为：谁耗 的多就干死谁。
+  - 当 pod qos=BestEffort 时，消耗最多紧缺资源的 Pod 最先驱逐。 
+  - 当 pod qos=Burstable 时，请求（request的值）最多紧缺资源的 Pod 会被驱逐，如果没有 Pod 超出他们的请求(比如说mem request的值为1G,但实际使用量并没有超过1G)，会驱逐资 源消耗量最大的 Pod。 
+  - 当 pod qos=Guaranteed 时，请求（request的值）最多紧缺资源的 Pod 被驱逐，如果没有 Pod 超出他们的请求，会驱逐资源消耗量最大的 Pod。 
+  - 如果当磁盘空间/inodes紧缺时，就会通过 QoS 的等级基础上，选择消耗最多磁盘空间 inodes 的 Pod 进行驱逐。
+- 检查资源是否到达阀值以内，若还未满足，则再进行第二步。
 
 ## 驱逐举例
 
