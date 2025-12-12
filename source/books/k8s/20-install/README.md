@@ -109,6 +109,8 @@ chmod 755 /etc/sysconfig/modules/ip_conntrack.modules
 lsmod | grep br_netfilter
 ~~~
 
+
+
 #### 6. 同步集群时间
 
 maste 节点和外网同步时间，node 节点向 master 节点同步时间。
@@ -624,7 +626,7 @@ data:
 kubectl apply -f kube-flannel.yml
 ~~~
 
-
+- 如果镜像拉取失败，需要换过内镜像源
 
 测试
 
