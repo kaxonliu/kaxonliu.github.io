@@ -138,6 +138,51 @@ snapshot restore etcdbackupfile.db --data-dir=/var/lib/etcd
 
 
 
+## etcd 数据备份和恢复
+
+~~~bash
+# 前提：备份应该周期性的（写到脚本里做成计划任务定期执行）
+ETCDCTL_API=3 etcdctl \
+--endpoints=https://127.0.0.1:2379 \
+--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+--cert=/etc/kubernetes/pki/etcd/server.crt \
+--key=/etc/kubernetes/pki/etcd/server.key \
+snapshot save etcdbackupfile.db # 把当前节点的etcd数据导出为快照
+		
+		
+# etcd数据库恢复步骤
+
+# 1、把使用该etcd实例的服务给停掉
+mv /etc/kubernetes/manifests /etc/kubernetes/manifests_bak
+
+systemctl stop kubelet
+
+
+# 2、数据清理
+mv /var/lib/etcd /var/lib/etcd_bak
+
+# 3、数据库还原
+mkdir /var/lib/etcd
+
+ETCDCTL_API=3 etcdctl \
+--endpoints=https://127.0.0.1:2379 \
+--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+--cert=/etc/kubernetes/pki/etcd/server.crt \
+--key=/etc/kubernetes/pki/etcd/server.key \
+snapshot restore etcdbackupfile.db --data-dir=/var/lib/etcd
+		
+
+# 4、重启启动服务
+mv /etc/kubernetes/manifests_bak /etc/kubernetes/manifests 
+systemctl restart kubelet
+~~~
+
+
+
+
+
+
+
 # 高可用部署
 
 ## 阶段1：准备工作
@@ -261,7 +306,7 @@ lsmod | grep br_netfilter
 
 其中一个 maste 节点和外网同步时间，其他节点向 master 节点同步时间。
 
-##### 其中一个 master 节点（比如：k8s-master-01 ）
+**其中一个 master 节点（比如：k8s-master-01 ）**
 
 ~~~bash
 # 1、安装
@@ -303,9 +348,7 @@ chronyc sources -v
 ^+ 203.107.6.88                  2   4   373     9   +562us[ +562us] +/-   22ms
 ~~~
 
-
-
-##### 其他节点（向：k8s-master-01  看起）
+**其他节点（向：k8s-master-01  看起）**
 
 ~~~bash
 # 1、安装 chrony
@@ -570,7 +613,11 @@ ctr version
 
 
 
-#### 1. 三台 master 上部署配置 nginx
+#### 1. master 上部署 nginx
+
+所有的 master 节点都要安装部署 nginx ，所有节点上的安装部署配置完全一样。
+
+这里是为了方便，直接在 master 节点上直接安装的 nginx，实际上可以在集群外部署 nginx 代理服务。
 
 ~~~bash
 # 1、添加repo源
@@ -638,7 +685,9 @@ systemctl status nginx
 
 
 
-#### 2. 三台 master 部署 keepalived
+#### 2. nginx 部署 keepalived
+
+为了方便，直接在 master 节点上直接安装的 nginx。这里也是在 master 节点上使用 keepalived 高可用 nginx 代理服务。
 
 ~~~bash
 # 1. 安装
@@ -818,7 +867,7 @@ systemctl status keepalived
 
 
 
-## 阶段4：安装k8s
+## 阶段4：安装 k8s
 
 #### 1. 为所有集群机器准备 k8s 源
 
@@ -1266,7 +1315,9 @@ kubectl get pod -n test -o wide
 
 为了实现平滑迁移 pod，我们可以添加 PDB 策略来对一些关键服务进行硬性限制，加了之后再去 drain 排空的时候， 如果存在一些受 PDB 保护的应用，则会 drain 失败，此时会硬性要求你先扩容副本，因为你已经 cordon 过了，再启新副本一定是在新节点上。
 
-#### 4. 开始升级---升级 master 节点
+#### 4. 开始升级
+
+先升级 master 节点中的一个节点。比如选择首先升级 k8s-master-01 节点。
 
 1、先隔离 Node 节点的业务流量，备份好数据（如果是 master 节点则记着备份 /var/lib/etcd 目录）
 
