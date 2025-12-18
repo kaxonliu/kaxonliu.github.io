@@ -371,7 +371,7 @@ spec:
 
 - 略
 
-**【不建议】**直接修改一下 altermanager 的配置的原始 yaml 文件 `alertmanager-secret.yaml`
+【**不建议**】直接修改一下 altermanager 的配置的原始 yaml 文件 `alertmanager-secret.yaml`
 
 ~~~yaml
 # /manifest/alertmanager-secret.yaml
@@ -431,7 +431,7 @@ type: Opaque
 
 
 
-**【建议的方式】**当然了，上述直接直接文件的方式比较麻烦，也可以先把 `alertmanager-main` 删除，然后使用自己的文件创建这个 secret 资源
+【**建议的方式**】上述直接直接文件的方式比较麻烦，也可以先把 `alertmanager-main` 删除，然后使用自己的文件创建这个 secret 资源，
 
 1. 删除 altermanager 原来的主配置资源 `alertmanager-main`
 
@@ -860,3 +860,734 @@ spec:
 部署该 yaml，过一会后确认规则更新 ok，并且重新 firing
 
 注意：使用该方式无法直接指定邮件使用的模板
+
+
+
+## 服务自动发现
+
+有了 serviceMornitor 之后，添加监控项非常方便，但是针对大量重复性的监控项，再去一个个的创建 serviceMornitor 去完成监控项的添加依然比较麻烦。
+
+此时可以使用服务自动发现机制。基于 endpoints 的方式自动发现服务，只需要给 svc  打上指定的标签，即可实现 prometheus operator 自动发现服务，不需要再手动一个一个创建 serviceMonitor
+
+并且这要求，prometheus 资源的 pod 内部使用的 serviceAccount 有拉取 k8s 集群所有 endpoints 的权限。
+
+具体做法：
+
+- 给 prometheus  server 注入一个服务发现的配置，这可以使用 prometheus 资源提供字段 `additionalScrapeConfigs` 实现
+- 给 prometheus server pod 使用的 serviceAccount 增加拉取 endpoints 的权限。
+
+
+
+### 注入服务发现配置
+
+如下是服务自动发现的配置需要注入到 prometheus server 中。prometheus operator 中使用 secret 的方式给 pod 提供配置，当然可以直接修改这个 secret，但是比较麻烦，不推荐。
+
+~~~yaml
+# prometheus-additional.yaml
+- job_name: 'myendpoints'
+  kubernetes_sd_configs:
+    - role: endpoints
+  relabel_configs: # 指标采集之前或采集过程中去重新配置
+    - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+      action: keep # 保留具有 prometheus.io/scrape=true 这个注解的Service
+      regex: true
+    - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+      action: replace
+      target_label: __metrics_path__
+      regex: (.+)
+    - source_labels:
+        [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+      action: replace
+      target_label: __address__
+      regex: ([^:]+)(?::\d+)?;(\d+) # RE2 正则规则，+是一次多多次，?是0次或1次，其中?:表示非匹配组(意思就是不获取匹配结果)
+      replacement: $1:$2
+    - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+      action: replace
+      target_label: __scheme__
+      regex: (https?)
+    - action: labelmap
+      regex: __meta_kubernetes_service_label_(.+)
+      replacement: $1
+    - source_labels: [__meta_kubernetes_namespace]
+      action: replace
+      target_label: kubernetes_namespace
+    - source_labels: [__meta_kubernetes_service_name]
+      action: replace
+      target_label: kubernetes_service
+    - source_labels: [__meta_kubernetes_pod_name]
+      action: replace
+      target_label: kubernetes_pod
+    - source_labels: [__meta_kubernetes_node_name]
+      action: replace
+      target_label: kubernetes_node
+~~~
+
+推荐直接使用 prometheus 资源提供的字段 `additionalScrapeConfigs`  注入配置。注入需要把上述配置文件做成 secret，然后配置使用即可。
+
+~~~bash
+# 做成 secret 
+kubectl create secret generic additional-configs --from-file=prometheus-additional.yaml -n monitoring
+~~~
+
+修改 promenteus 资源的配置清单增加字段 `additionalScrapeConfigs`  
+
+~~~yaml
+# prometheus-prometheus.yaml 
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  ................
+  name: k8s
+  namespace: monitoring
+spec:
+  ................
+  serviceAccountName: prometheus-k8s
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector: {}
+  version: 3.5.0
+  # 增加如下配置
+  # name 就是上面创建的 secret
+  # key 就是创建 secret使用的文件名
+  additionalScrapeConfigs:
+    name: additional-configs
+    key: prometheus-additional.yaml
+~~~
+
+重新部署，应用后几秒钟即可发现 prometheus pod 内的配置发生变化。
+
+~~~bahs
+kubectl apply -f prometheus-prometheus.yaml
+~~~
+
+>重新部署 prometheus-prometheus.yaml ，该 yaml 对应的是 prometheus 对象，prometheus 对象代表 prometheus server 服务，operator 发现该 prometheus 对象变更，会自动更新到 prometheus server 完成 reload。
+
+
+
+### 更新 sa 权限
+
+如下是 prometheus pod 内使用的 serviceAccount 的权限配置，发现少了 endpoints 的拉取权限，增加即可。
+
+~~~yaml
+# prometheus-clusterRole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: prometheus
+    app.kubernetes.io/instance: k8s
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: kube-prometheus
+    app.kubernetes.io/version: 3.5.0
+  name: prometheus-k8s
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes/metrics
+  verbs:
+  - get
+- nonResourceURLs:
+  - /metrics
+  - /metrics/slis
+  verbs:
+  - get
+~~~
+
+增加权限后的 `prometheus-clusterRole.yaml`，更新后即可。
+
+~~~yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: prometheus
+    app.kubernetes.io/instance: k8s
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: kube-prometheus
+    app.kubernetes.io/version: 2.54.1
+  name: prometheus-k8s
+rules:
+  - apiGroups:
+      - ''
+    resources:
+      - nodes
+      - services
+      - endpoints
+      - pods
+      - nodes/proxy
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - configmaps
+      - nodes/metrics
+    verbs:
+      - get
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get
+~~~
+
+测试 redis
+
+~~~yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: redis
+  namespace: monitor
+  annotations:
+    prometheus.io/scrape: 'true'  # -------------------》  必须添加这一行
+    prometheus.io/port: '9121'    # port
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+    - name: prom
+      port: 9121
+      targetPort: 9121  
+~~~
+
+
+
+## 数据持久化
+
+prometheus operator 默认部署的 prometheus server 挂在卷是 emptyDir，pod 重启数据就丢失。
+
+此外由于 Prometheus 本身对 NFS 存储没有做相关的支持，所以线上一定不要用 NFS 来做数据持久化。
+
+规范的做法还是通过修改自定义资源 prometheus 资源来完成变更（即使 pormetheus pod 是 statefulset 启动的）
+
+~~~bash
+prometheus server的pod《------prometheus资源《---------operator控制器
+~~~
+
+修改 ` prometheus-prometheus.yaml `，使用 `storeage.volumeClaimTemplate` 完成配置本地数据卷
+
+~~~yaml
+# prometheus-prometheus.yaml 
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  ................
+  name: k8s
+  namespace: monitoring
+spec:
+  ................
+  serviceAccountName: prometheus-k8s
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector: {}
+  version: 3.5.0
+  
+  # 注入配置
+  additionalScrapeConfigs:
+    name: additional-configs
+    key: prometheus-additional.yaml
+  
+  # 修改存储卷类型
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 10Gi
+~~~
+
+更新部署
+
+~~~bash
+kubectl apply -f prometheus-prometheus.yaml
+~~~
+
+需要提前部署 sc 帮助自动创建 pv ，并和 pvc 关联。
+
+
+
+
+
+## Blackbox exporter
+
+黑盒监控程序，模拟用户来发起访问测试，可以朝着指定的服务发起访问请求。包括 HTTP探针、TCP探针、Dns、icmp等用于检测站点、服务的可访问性、服务的连通性、证书过期时间以及访问效率等。
+
+Prometheus operator 自带了 Blackbox exporter，无需再手动安装部署。如果没有使用 Prometheus operator 可以参考如下手动使用 helm 的方式安装。
+
+手动使用 helm 部署
+
+~~~bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+# 下载&解压
+helm pull prometheus-community/prometheus-blackbox-exporter
+tar -zxvf prometheus-blackbox-exporter.tar.gz
+~~~
+
+修改 values.yaml 修改blackbox_exporter配置
+
+```yaml
+modules:
+  http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2"]
+      valid_status_codes: [200]
+      method: GET
+      headers:
+        Host: prometheus.example.com
+        Accept-Language: en-US
+        Origin: example.com
+      preferred_ip_protocol: "ip4"
+      no_follow_redirects: false
+  
+  http_post_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2"]
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"text": "hello"}'
+      preferred_ip_protocol: "ip4"
+  
+  tcp_connect:
+    prober: tcp
+    timeout: 10s
+  
+  dns_tcp:
+    prober: dns
+    dns:
+      transport_protocol: "udp"
+      preferred_ip_protocol: "ip4"
+      query_name: "kubernetes.default.svc.cluster.local"
+```
+
+部署
+
+~~~bash
+helm install blackbox-exporter -n monitor .
+~~~
+
+
+
+### 使用 Blackbox exporter
+
+如下是 prometheus operator 拉起的 Blackbox exporter svc
+
+~~~bash
+[root@k8s-master-02 ~]# kubectl  -n monitoring get svc blackbox-exporter 
+NAME                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)              AGE
+blackbox-exporter   ClusterIP   10.98.100.169   <none>        9115/TCP,19115/TCP   24h
+~~~
+
+想要使用 Blackbox exporter，需要做如下准备工作：
+
+- blockbox 服务要准备好，服务地址为：`blackbox-exporter.monitoring:19115`
+- 模拟用户访问行为的模块要定义好，定义黑盒检测 job，注入到 prometheus 服务的配置中实现周期性的黑盒检测。
+
+定义 job 任务必须具备三要素：
+
+1. 源（模拟客户端的程序）：blackbox-exporter.monitoring:19115
+2. 模块（模拟客户的访问协议）
+3. 目标：被检测的目标服务
+
+
+
+#### 准备模块
+
+Blackbox exporter pod 使用了 cm 提供模块的配置信息，修改更新配置信息如下。应用 cm，然后手动重启 blackbox-exporter pod
+
+~~~yaml
+# blackboxExporter-configuration.yaml
+apiVersion: v1
+data:
+  config.yml: |-
+    "modules":
+      "http_2xx":
+        "prober": "http"
+        "timeout": "5s"
+        "http":
+          "valid_http_versions": ["HTTP/1.1", "HTTP/2"]
+          "valid_status_codes": [200]
+          "method": "GET"
+          "preferred_ip_protocol": "ip4"
+      "http_post_2xx":
+        "http":
+          "method": "POST"
+          "preferred_ip_protocol": "ip4"
+        "prober": "http"
+      "tcp_connect":
+        "prober": "tcp"
+        "timeout": "10s"
+        "tcp":
+          "preferred_ip_protocol": "ip4"
+
+      "dns":  # DNS 检测模块
+        "prober": "dns"
+        "dns":
+          "transport_protocol": "udp"
+          "preferred_ip_protocol": "ip4"
+          "query_name": "kubernetes.default.svc.cluster.local" # 利用这个域名来检查dns服务器
+
+      "icmp":  # ping 检测服务器的存活
+        "prober": "icmp"
+        "timeout": "10s"
+
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: blackbox-exporter
+    app.kubernetes.io/part-of: kube-prometheus
+    app.kubernetes.io/version: 0.25.0
+  name: blackbox-exporter-configuration
+  namespace: monitoring
+~~~
+
+
+
+#### 定义黑盒检测 job
+
+如果你是手动部署的 prometheus 那直接编写 job 即可。
+
+如果使用 prometheus operator，无需手动编写 job，可以定制相关 Probe 资源，自动生成的 prometheus配置信息中的 job 配置。
+
+
+
+**HTTP 监控 **
+
+~~~yaml
+# probeHttp.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: domain-probe
+  namespace: monitoring
+spec:
+  jobName: blackbox_http_2xx # 任务名称
+  prober: # 指定blackbox的地址
+    url: blackbox-exporter:19115
+  module: http_2xx # 配置文件中的检测模块
+  targets: # 目标
+    # ingress <Object>
+    staticConfig: # 如果配置了 ingress，静态配置优先
+      static:
+        - https://baidu.com
+      relabelingConfigs:
+        - sourceLabels: [__address__]
+          targetLabel: __param_target
+        - sourceLabels: [__param_target]
+          targetLabel: instance
+~~~
+
+应用
+
+~~~bash
+[root@k8s-master-01 monitor]# kubectl apply -f probeHttp.yaml 
+probe.monitoring.coreos.com/domain-probe created
+[root@k8s-master-01 monitor]# 
+[root@k8s-master-01 monitor]# 
+[root@k8s-master-01 monitor]# kubectl -n monitoring get probes.monitoring.coreos.com 
+NAME           AGE
+domain-probe   14s
+~~~
+
+应用后几秒钟，即可在 web 页面中找到对一个的 target
+
+![](probe-job.png)
+
+
+
+**ping 监测配置**
+
+~~~yaml
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: ping
+  namespace: monitoring
+spec:
+  jobName: ping # 生成到prometheus配置文件中的job任务名称
+  prober: # 指定blackbox的地址，注意端口是19115
+    url: blackbox-exporter.monitoring:19115
+  module: icmp # 引用配置文件中的检测模块
+  targets: # 目标
+    # ingress <Object>  # 也可以配置监控ingress
+    staticConfig: # 如果同时配置了 ingress、staticConfig，那么后者优先级更高
+      static:
+        - www.baidu.com  # 检测的目标地址，当然可以是ip了，本质就是ping一下
+      relabelingConfigs:
+        - sourceLabels: [__address__]
+          targetLabel: __param_target
+        - sourceLabels: [__param_target]
+          targetLabel: instance
+~~~
+
+
+
+**SSL 证书过期时间监测**
+
+~~~yaml
+# probeSSLCheck.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: blockbox-ssl-check
+  namespace: monitoring
+spec:
+  jobName: blockbox_ssl_check # 任务名称
+  prober: # 指定blackbox的地址
+    url: blackbox-exporter.monitoring:19115
+  #module: http_2xx # 配置文件中的检测模块
+  module: http_2xx
+  targets: # 目标
+    staticConfig: 
+      static:
+        - https://baidu.com
+~~~
+
+- 注意，这个 yaml 文件中不需要有 `relabelingConfigs` 配置。
+
+
+
+#### 黑盒检测报警
+
+在 prometheus server 增加报警规则的配置，使用 `PrometheusRule` 资源注入。
+
+如下 ssl 证书过期的黑盒检测报警规则。
+
+~~~yaml
+# sslCheckRules.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ssl-check-rules
+  namespace: monitoring
+spec:
+  groups:
+    - name: sslcheck
+      rules:
+        - alert: Ssl Cert Will Expire in 7 days
+          annotations:
+            summary: '域名证书即将过期 (instance {{ $labels.instance }})'
+            description: "域名证书 7 天后过期 \n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}"
+          expr: |
+             probe_ssl_earliest_cert_expiry{job="blockbox_ssl_check"} - time() < 86400 * 700 # 故意让其触发
+             #probe_ssl_earliest_cert_expiry{job="blockbox_ssl_check"} - time() < 86400 * 7
+          for: 1m
+          labels:
+            namespace: monitoring
+            severity: kaxon-critical  # 设置一个独一无二的标签
+~~~
+
+
+
+#### 补充
+如果你需要手动编写 job 参考如下示例。
+- HTTP 监控（监控外部域名）
+
+~~~yaml
+- job_name: 'blackbox_http_2xx'
+  metrics_path: /probe
+  params:
+    module: [http_2xx]
+  static_configs:
+    - targets:
+      #- http://prometheus.io    # Target to probe with http.
+      #- https://prometheus.io   # Target to probe with https.
+      - https://www.baidu.com
+  relabel_configs:
+    - source_labels: [__address__]
+      target_label: __param_target
+    - source_labels: [__param_target]
+      target_label: instance
+    - target_label: __address__
+      replacement: prometheus-blackbox-exporter.monitor:9115
+~~~
+
+- ping 监测配置。在内网可以通过ping (icmp)检测服务器的存活，以前面的最基本的module配置为例，在Prometheus的配置文件中配置使用ping module：
+  
+
+~~~yaml
+- job_name: 'blackbox_ping_all'
+  scrape_interval: 1m
+  metrics_path: /probe
+  params:
+    module: [ping]
+  static_configs:
+    - targets:
+      - 64.115.3.100
+      labels:
+        instance: test
+  relabel_configs:
+    - source_labels: [__address__]
+      target_label: __param_target
+    - target_label: __address__
+      replacement: prometheus-blackbox-exporter.monitor:9115
+~~~
+
+
+  - DNS 监控
+
+~~~yaml
+- job_name: "blackbox-k8s-service-dns"
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  metrics_path: /probe
+  params:
+    module: [dns_tcp]
+  static_configs:
+    - targets:
+      - kube-dns.kube-system:53
+  relabel_configs:
+    - source_labels: [__address__]
+      target_label: __param_target
+    - source_labels: [__param_target]
+      target_label: instance
+    - target_label: __address__
+      replacement: prometheus-blackbox-exporter.monitor:9115
+~~~
+
+
+
+- ICMP监测
+
+
+~~~yaml
+- job_name: node_status
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    static_configs:
+      - targets: ['10.165.94.31']
+        labels:
+          instance: node_status
+          group: 'node'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: prometheus-blackbox-exporter.monitor:9115 # blackbox-exporter Sevice 地址端口
+~~~
+
+
+
+- TCP监测
+
+
+~~~yaml
+- job_name: 'prometheus_port_status'
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets: ['172.19.155.133:8765']
+        labels:
+          instance: 'port_status'
+          group: 'tcp'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: prometheus-blackbox-exporter.monitor:9115 # blackbox-exporter Sevice 地址端口
+~~~
+
+
+
+- SSL 证书过期时间监测
+
+~~~yaml
+rule_files:
+  - ssl_expiry.rules
+scrape_configs:
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]  # Look for a HTTP 200 response.
+    static_configs:
+      - targets:
+        - example.com  # Target to probe
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: prometheus-blackbox-exporter.monitor:9115 # blackbox-exporter Sevice 地址端口
+~~~
+
+
+一些告警规则示例
+
+~~~yaml
+cat >> prometheus/rules/blackbox_exporter.yml <<"EOF"
+groups:
+- name: Blackbox
+  rules:
+  - alert: 黑盒子探测失败告警
+    expr: probe_success == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "黑盒子探测失败{{ $labels.instance }}"
+      description: "黑盒子检测失败，当前值：{{ $value }}"
+  - alert: 请求慢告警
+    expr: avg_over_time(probe_duration_seconds[1m]) > 1
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "请求慢{{ $labels.instance }}"
+      description: "请求时间超过1秒，值为：{{ $value }}"
+  - alert: http状态码检测失败
+    expr: probe_http_status_code <= 199 OR probe_http_status_code >= 400
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "http状态码检测失败{{ $labels.instance }}"
+      description: "HTTP状态码非 200-399，当前状态码为：{{ $value }}"
+  - alert: ssl证书即将到期
+    expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "证书即将到期{{ $labels.instance }}"
+      description: "SSL 证书在 30 天后到期，值：{{ $value }}"
+
+  - alert: ssl证书即将到期
+    expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 3
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "证书即将到期{{ $labels.instance }}"
+      description: "SSL 证书在 3 天后到期，值：{{ $value }}"
+
+  - alert: ssl证书已过期
+    expr: probe_ssl_earliest_cert_expiry - time() <= 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "证书已过期{{ $labels.instance }}"
+      description: "SSL 证书已经过期，请确认是否在使用"
+EOF
+~~~
+
+
+
+  
