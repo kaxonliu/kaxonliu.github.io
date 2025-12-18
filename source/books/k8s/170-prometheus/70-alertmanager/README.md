@@ -758,6 +758,73 @@ data:
         #   mobiles: ["17611111234", "13411115678"]
 ~~~
 
+如果想要艾特所有人
+
+~~~yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promoter-conf
+  namespace: monitor
+data:
+  template.tmpl: |
+  {{ define "default.tmpl" }}
+  ...
+  ...
+  config.yaml: |
+    templates:
+      - /etc/promoter/template.tmpl
+    targets:
+      webhook1:
+        url: https://oapi.dingtalk.com/robot/send?access_token=3a...d8b
+        secret: SEC67...1aea0
+        message:
+          text: {{ template "default.tmpl" . }}
+        mention:
+          all: true
+~~~
+
+如果想要艾特个别人员
+
+~~~yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promoter-conf
+  namespace: monitor
+data:
+  template.tmpl: |
+  {{ define "default.tmpl" }}
+  ...
+  ...
+  config.yaml: |
+    templates:
+      - /etc/promoter/template.tmpl
+    targets:
+      webhook1:
+        url: https://oapi.dingtalk.com/robot/send?access_token=3a...d8b
+        secret: SEC67...1aea0
+        message:
+          text: |
+            {{ template "default.tmpl" . }}
+            @17611111234 @13411115678
+        mention:
+          mobiles: ["17611111234", "13411115678"]
+~~~
+
+>补充 报警图片
+>
+>~~~
+>https://egonimages.oss-cn-beijing.aliyuncs.com/gaojing1.jpg
+>https://egonimages.oss-cn-beijing.aliyuncs.com/gaojing2.jpg
+>https://egonimages.oss-cn-beijing.aliyuncs.com/gaojing3.png
+>https://egonimages.oss-cn-beijing.aliyuncs.com/gaojing4.jpg
+>https://egonimages.oss-cn-beijing.aliyuncs.com/gaojing5.jpg
+>https://egonimages.oss-cn-beijing.aliyuncs.com/gaojing6.png
+>~~~
+
+
+
 **对接 alertmanager**
 
 修改 alertmanager 的配置文件。增加 webhook 类型的 receiver 并指定使用 路由发送警告信息。
@@ -807,10 +874,4 @@ data:
       # url路径中的 webhook1 就是在 /usr/local/prometheus-webhook-dingtalk/config.yml 配置的 target 的名字
       - url: 'http:/promoter:8080/dingtalk/webhook1/send'
 ~~~
-
-
-
-
-
-
 
